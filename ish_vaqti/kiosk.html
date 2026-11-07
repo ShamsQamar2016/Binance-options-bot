@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Иш вақти</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --text:#f1f5f9; --muted:#94a3b8;
+          --green:#16a34a; --red:#dc2626; --line:#334155; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+              font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; user-select:none; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; }
+  header h1 { margin:0; font-size:26px; }
+  #clock { text-align:right; }
+  #clock .t { font-size:40px; font-weight:700; font-variant-numeric:tabular-nums; }
+  #clock .d { color:var(--muted); font-size:16px; }
+  main { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; padding:0 24px 24px; }
+  @media (max-width:640px){ main { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:2px solid var(--line); border-radius:20px; padding:20px; }
+  .card.in { border-color:var(--green); }
+  .name { font-size:30px; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .dot { width:16px; height:16px; border-radius:50%; background:var(--muted); }
+  .in .dot { background:var(--green); box-shadow:0 0 12px var(--green); }
+  .info { color:var(--muted); font-size:17px; min-height:48px; margin:8px 0 16px; line-height:1.4; }
+  .btns { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  button { border:0; border-radius:16px; padding:26px 8px; font-size:24px; font-weight:700; color:#fff; cursor:pointer; }
+  button:active { transform:scale(.97); }
+  button:disabled { opacity:.25; }
+  .b-in { background:var(--green); } .b-out { background:var(--red); }
+  #overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; padding:16px; }
+  #overlay.show { display:flex; }
+  .box { background:var(--card); border-radius:24px; padding:32px; width:min(480px,100%); text-align:center; }
+  .box p { font-size:28px; margin:0 0 24px; }
+  .box .btns button { padding:22px 8px; }
+  .b-no { background:#475569; }
+  #toast { position:fixed; left:50%; bottom:32px; transform:translateX(-50%); background:#0b1220; border:2px solid var(--green);
+           padding:18px 28px; border-radius:16px; font-size:22px; display:none; max-width:90%; text-align:center; }
+  #toast.err { border-color:var(--red); }
+  #net { color:var(--red); font-size:14px; display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>🕘 Иш вақти</h1><div id="net">Сервер билан алоқа йўқ</div></div>
+  <div id="clock"><div class="t">--:--</div><div class="d"></div></div>
+</header>
+<main id="list"></main>
+
+<div id="overlay"><div class="box">
+  <p id="q"></p>
+  <div class="btns"><button class="b-no" id="no">Йўқ</button><button id="yes">Ҳа</button></div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+let pending = null, toastTimer = null;
+const $ = id => document.getElementById(id);
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function render(st){
+  $('clock').querySelector('.t').textContent = st.time;
+  $('clock').querySelector('.d').textContent = st.date;
+  $('list').innerHTML = st.workers.map(w => {
+    let info = 'Бугун ҳали келмади';
+    if (w.came) {
+      info = 'Келди: ' + w.came + (w.left && !w.in ? ' · Кетди: ' + w.left : '') +
+             '<br>Ишлади: ' + w.worked + (w.in ? ' (ишда)' : '');
+    }
+    return `<div class="card ${w.in ? 'in' : ''}">
+      <div class="name"><span class="dot"></span>${esc(w.name)}</div>
+      <div class="info">${info}</div>
+      <div class="btns">
+        <button class="b-in" ${w.in ? 'disabled' : ''} data-n="${esc(w.name)}" data-a="in">Келдим</button>
+        <button class="b-out" ${w.in ? '' : 'disabled'} data-n="${esc(w.name)}" data-a="out">Кетдим</button>
+      </div></div>`;
+  }).join('');
+}
+
+async function refresh(){
+  try {
+    const r = await fetch('/api/status', {cache:'no-store'});
+    render(await r.json()); $('net').style.display = 'none';
+  } catch(e) { $('net').style.display = 'block'; }
+}
+
+function toast(msg, ok){
+  const t = $('toast'); t.textContent = msg; t.className = ok ? '' : 'err'; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 4000);
+}
+
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  pending = {name: b.dataset.n, action: b.dataset.a};
+  $('q').textContent = pending.name + ' — ' + (pending.action === 'in' ? 'Келдим' : 'Кетдим') + '?';
+  $('yes').className = pending.action === 'in' ? 'b-in' : 'b-out';
+  $('overlay').classList.add('show');
+});
+$('no').onclick = () => { pending = null; $('overlay').classList.remove('show'); };
+$('yes').onclick = async () => {
+  const p = pending; pending = null; $('overlay').classList.remove('show'); if (!p) return;
+  try {
+    const r = await fetch('/api/mark', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)});
+    const d = await r.json(); render(d.status); toast(d.message, d.ok);
+  } catch(e) { toast('Сервер билан алоқа йўқ. Қайта уриниб кўринг.', false); }
+};
+
+refresh(); setInterval(refresh, 20000);
+</script>
+</body>
+</html>

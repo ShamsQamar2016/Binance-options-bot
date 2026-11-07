@@ -1,0 +1,10 @@
+{
+  "bot_token": "123456789:AAEXAMPLE_BOT_TOKEN_SHU_YERGA",
+  "admin_chat_ids": [123456789],
+  "workers": ["Баходир", "Тулаган", "Иброхим", "Шавкат"],
+  "port": 8080,
+  "utc_offset_hours": 5,
+  "work_start": "09:00",
+  "absent_report_time": "09:30",
+  "daily_report_time": "20:00"
+}
