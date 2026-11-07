@@ -23,6 +23,7 @@ const KUNLAR = ['Якшанба', 'Душанба', 'Сешанба', 'Чорш�
 const DEFAULTS = [
   ['BOT_TOKEN', '', 'BotFather берган токен'],
   ['WEBAPP_URL', '', 'Deploy қилгандан кейинги Web app манзили (…/exec)'],
+  ['RELAY_URL', '', 'Cloudflare Worker манзили (…workers.dev). Телеграм шу манзилга уланади'],
   ['ADMIN_IDS', '', 'Хабар оладиган раҳбарлар (бўш бўлса — ботга биринчи /start ёзган одам)'],
   ['PLANSHET_IDS', '', 'Тугмалар ишлайдиган Телеграм аккаунтлар (бот орқали рухсат берилади)'],
   ['ISH_BOSHLANISH', '09:00', 'Иш бошланиши — кечикишни ҳисоблаш учун'],
@@ -33,6 +34,10 @@ const DEFAULTS = [
   ['DAM_OLISH', 'Якшанба', 'Дам олиш кунлари (вергул билан), бу кунлари «келмади» хабари келмайди'],
 ];
 const DEFAULT_WORKERS = ['Баходир', 'Тулаган', 'Иброхим', 'Шавкат'];
+
+// Агар Apps Script таблица ичидан эмас, алоҳида очилган бўлса — таблица ID сини шу ерга ёзинг
+// (таблица манзилидаги /d/ ва /edit орасидаги матн). Таблица ичидан очилган бўлса — бўш қолдиринг.
+const SPREADSHEET_ID = '';
 
 // ====================================================================== ёрдамчилар
 
@@ -113,6 +118,7 @@ function cfg() {
   CFG_CACHE = {
     token: kv.BOT_TOKEN || '',
     url: kv.WEBAPP_URL || '',
+    relay: kv.RELAY_URL || '',
     admins: ids(kv.ADMIN_IDS),
     tablets: ids(kv.PLANSHET_IDS),
     workStart: normHM(kv.ISH_BOSHLANISH) || '09:00',
@@ -199,24 +205,47 @@ function lateText(start) {
   return d > 1 ? ' ⚠️ ' + fmtDur(d) + ' кечикди' : '';
 }
 
+/** Ходимнинг бугунги ёзувлари (вақт бўйича). */
+function todaySessions(worker) {
+  const today = todayStr();
+  return loadSessions().filter(s => s.worker === worker && s.date === today)
+    .sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+/** «Келдим» — кунига фақат бир марта. Қайта босилса раҳбарга хабар бормайди. */
 function checkIn(worker) {
   closeStale();
-  const today = todayStr(), t = nowHM();
-  const open = loadSessions().filter(s => s.worker === worker && !s.end)[0];
-  if (open) return { ok: false, msg: worker + ', сиз ' + open.start + ' да «Келдим» босгансиз.' };
-  addSession(worker, today, t, '', '');
+  const t = nowHM();
+  const list = todaySessions(worker);
+  if (list.length) {
+    const first = list[0], last = list[list.length - 1];
+    return { ok: false, msg: last.end
+      ? worker + ', сиз бугун ' + first.start + ' да келиб, ' + last.end + ' да кетгансиз.'
+      : worker + ', сиз бугун ' + first.start + ' да «Келдим» босгансиз.' };
+  }
+  addSession(worker, todayStr(), t, '', '');
   notifyAdmins('✅ <b>' + esc(worker) + '</b> ишга келди — ' + t + lateText(t));
   return { ok: true, msg: '✅ Хуш келибсиз, ' + worker + '! (' + t + ')' };
 }
 
+/** «Кетдим» — кунига фақат бир марта. Қайта босилса раҳбарга хабар бормайди. */
 function checkOut(worker) {
   closeStale();
   const t = nowHM(), today = todayStr();
-  const open = loadSessions().filter(s => s.worker === worker && !s.end)[0];
-  if (!open) {
-    notifyAdmins('⚠️ <b>' + esc(worker) + '</b> «Кетдим» босди (' + t + '), лекин бугун «Келдим» босмаган.\n' +
-      'Тўғирлаш: <code>/tuzat ' + esc(worker) + ' ' + shortDay(today) + ' 09:00 ' + t + '</code>');
+  const list = todaySessions(worker);
+  const open = list.filter(s => !s.end)[0];
+  if (!list.length) {
+    // «Келдим» босмай «Кетдим» босди — раҳбарга кунига бир марта огоҳлантириш
+    const P = PropertiesService.getScriptProperties(), key = 'warn_' + today + '_' + worker;
+    if (!P.getProperty(key)) {
+      P.setProperty(key, '1');
+      notifyAdmins('⚠️ <b>' + esc(worker) + '</b> «Кетдим» босди (' + t + '), лекин бугун «Келдим» босмаган.\n' +
+        'Тўғирлаш: <code>/tuzat ' + esc(worker) + ' ' + shortDay(today) + ' 09:00 ' + t + '</code>');
+    }
     return { ok: false, msg: worker + ', сиз бугун «Келдим» босмагансиз. Раҳбарга хабар берилди.' };
+  }
+  if (!open) {
+    return { ok: false, msg: worker + ', сиз бугун ' + list[list.length - 1].end + ' да «Кетдим» босгансиз.' };
   }
   updateSession(open, open.start, t, open.note);
   const total = daySummary(today)[worker].min;
@@ -373,6 +402,27 @@ function adminKeyboard() {
   };
 }
 
+const ADMIN_COMMANDS = [
+  { command: 'bugun', description: 'Бугунги ҳисобот' },
+  { command: 'kecha', description: 'Кечаги ҳисобот' },
+  { command: 'hafta', description: 'Шу ҳафта' },
+  { command: 'oy', description: 'Шу ой' },
+  { command: 'jadval', description: 'Ойлик жадвал' },
+  { command: 'tuzat', description: 'Вақтни тўғирлаш' },
+];
+
+/** Командалар менюси: ҳамма учун бўш, фақат раҳбарда тўлиқ, планшетларда бўш. */
+function setMenus() {
+  tg('setMyCommands', { commands: [], scope: { type: 'all_private_chats' } });
+  cfg().admins.forEach(id => tg('setMyCommands', { commands: ADMIN_COMMANDS, scope: { type: 'chat', chat_id: Number(id) } }));
+  cfg().tablets.forEach(id => clearMenu(id));
+}
+
+/** Битта планшет чатидан менюни ўчиради. */
+function clearMenu(id) {
+  tg('setMyCommands', { commands: [], scope: { type: 'chat', chat_id: Number(id) } });
+}
+
 const HELP =
   '🤖 <b>Иш вақти боти</b>\n\n' +
   '/bugun — бугун ким келди, ким келмади\n' +
@@ -417,12 +467,14 @@ function handleUpdate(upd) {
   const msg = upd.message;
   if (!msg || !msg.text) return;
   const chatId = String(msg.chat.id);
-  const text = msg.text.trim();
+  // Кўринмас белгиларни (эмодзи ичидаги вариация белгиси ва бошқалар) олиб ташлаймиз
+  const text = msg.text.replace(/[\uFE0F\u200B-\u200D\u2060]/g, '').replace(/\s+/g, ' ').trim();
   const c = cfg();
 
   // Биринчи /start ёзган одам — раҳбар (ADMIN_IDS бўш бўлса)
   if (!c.admins.length && /^\/start/.test(text)) {
     setCfg('ADMIN_IDS', chatId);
+    setMenus();
     send(chatId, '👑 Сиз раҳбар сифатида белгиландингиз.\n\n' + HELP, { reply_markup: adminKeyboard() });
     return;
   }
@@ -579,6 +631,7 @@ function handleCallback(q) {
   if (p[0] === 'p') {                                  // планшетга рухсат
     const ids = cfg().tablets;
     if (ids.indexOf(p[1]) < 0) setCfg('PLANSHET_IDS', ids.concat([p[1]]).join(','));
+    clearMenu(p[1]);                                   // планшетда меню бўлмайди
     edit('✅ Планшет уланди (ID <code>' + p[1] + '</code>).');
     send(p[1], '✅ Рухсат берилди! Ходимлар пастдаги тугмаларни босади 👇', { reply_markup: tabletKeyboard() });
     return;
@@ -625,6 +678,7 @@ function tick() {
     const P = PropertiesService.getScriptProperties();
     const today = todayStr(), hm = nowHM();
     const rest = c.restDays.indexOf(KUNLAR[weekday(today)].toLowerCase()) >= 0;
+    P.getKeys().forEach(k => { if (k.indexOf('warn_') === 0 && k.indexOf('warn_' + today) !== 0) P.deleteProperty(k); });
 
     if (hm >= c.absentTime && P.getProperty('sent_absent') !== today) {
       P.setProperty('sent_absent', today);
@@ -669,7 +723,7 @@ function tick() {
 
 /** 1-қадам: варақларни яратади. */
 function setup() {
-  const book = SpreadsheetApp.getActiveSpreadsheet();
+  const book = SPREADSHEET_ID ? SpreadsheetApp.openById(SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
   PropertiesService.getScriptProperties().setProperty('SS_ID', book.getId());
   book.setSpreadsheetTimeZone(TZ);
 
@@ -708,16 +762,13 @@ function ulash() {
   if (!c.token) throw new Error('«Созламалар» варағида BOT_TOKEN бўш.');
   const url = c.url || ScriptApp.getService().getUrl();
   if (!url || !/\/exec$/.test(url)) throw new Error('WEBAPP_URL нотўғри. Deploy → Web app манзилини (…/exec) ёзинг.');
-  const r = tg('setWebhook', { url: url, drop_pending_updates: true, allowed_updates: ['message', 'callback_query'] });
+  if (c.relay && !/^https:\/\/\S+$/.test(c.relay)) throw new Error('RELAY_URL нотўғри (https://… бўлиши керак).');
+  // Google доим «302» жавоб қайтаради, Телеграм буни хато деб ҳисоблаб хабарларни тиқиб қўяди.
+  // Шунинг учун Телеграм Cloudflare воситачисига (RELAY_URL) уланади, у хабарни Google га узатади.
+  const hook = c.relay || url;
+  const r = tg('setWebhook', { url: hook, drop_pending_updates: true, allowed_updates: ['message', 'callback_query'] });
   if (!r.ok) throw new Error('Телеграмга уланмади: ' + JSON.stringify(r));
-  tg('setMyCommands', { commands: [
-    { command: 'bugun', description: 'Бугунги ҳисобот' },
-    { command: 'kecha', description: 'Кечаги ҳисобот' },
-    { command: 'hafta', description: 'Шу ҳафта' },
-    { command: 'oy', description: 'Шу ой' },
-    { command: 'jadval', description: 'Ойлик жадвал' },
-    { command: 'tuzat', description: 'Вақтни тўғирлаш' },
-  ] });
+  setMenus();
 
   ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'tick') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('tick').timeBased().everyMinutes(5).create();
@@ -730,5 +781,11 @@ function ulash() {
 
   const me = tg('getMe', {});
   console.log('✅ Бот уланди: @' + (me.result && me.result.username) +
+    (c.relay ? '\nCloudflare орқали: ' + c.relay : '\n⚠️ RELAY_URL бўш — хабарлар тиқилиб қолиши мумкин.') +
     '\nТелеграмда ботга /start ёзинг — сиз раҳбар бўласиз.');
+}
+
+/** Текширув: Телеграм ботга қандай уланганини кўрсатади (pending_update_count, last_error_message). */
+function tekshir() {
+  console.log(JSON.stringify(tg('getWebhookInfo', {}), null, 2));
 }
