@@ -21,6 +21,65 @@ def _headers() -> dict[str, str]:
     return {"Authorization": f"Key {key}", "Content-Type": "application/json"}
 
 
+XAI_BASE_URL = "https://api.x.ai/v1"
+DEFAULT_GROK_MODEL = "grok-imagine-video-1.5-lite"
+
+
+def _grok_generate(
+    prompt: str,
+    out_path: Path,
+    duration: int,
+    aspect_ratio: str,
+    timeout_s: int = 1200,
+    poll_every_s: int = 5,
+) -> Path:
+    """xAI Grok Imagine видео. Ҳужжат: docs.x.ai/developers/model-capabilities/video/generation"""
+    key = os.environ.get("XAI_API_KEY")
+    if not key:
+        raise RuntimeError("XAI_API_KEY ўрнатилмаган (.env файлига қўшинг)")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    payload = {
+        "model": os.environ.get("GROK_MODEL", DEFAULT_GROK_MODEL),
+        "prompt": prompt,
+        "duration": max(1, min(15, int(duration))),
+        "aspect_ratio": aspect_ratio,
+        "resolution": os.environ.get("GROK_RESOLUTION", "720p"),
+        # Ўз овозини яратмасин: ўзбекча дубляж фақат бизнинг TTS овози бўлсин
+        "generate_audio": False,
+    }
+
+    # 1) Сўровни юбориш → request_id
+    resp = requests.post(f"{XAI_BASE_URL}/videos/generations", json=payload, headers=headers, timeout=60)
+    resp.raise_for_status()
+    request_id = resp.json()["request_id"]
+
+    # 2) Тайёр бўлишини кутиш: pending → done | failed
+    deadline = time.time() + timeout_s
+    while True:
+        data = requests.get(f"{XAI_BASE_URL}/videos/{request_id}", headers=headers, timeout=60).json()
+        state = data.get("status")
+        if state == "done":
+            break
+        if state == "failed":
+            raise RuntimeError(f"Grok видео хатоси: {data.get('error')}")
+        if time.time() > deadline:
+            raise TimeoutError(f"Grok видео {timeout_s} сонияда тайёр бўлмади: {request_id}")
+        time.sleep(poll_every_s)
+
+    # 3) Видео ҳаволасини юклаб олиш (ҳавола вақтинчалик, дарров сақлаймиз)
+    video_url = (data.get("video") or {}).get("url")
+    if not video_url:
+        raise RuntimeError(f"Жавобда видео ҳаволаси йўқ: {data}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with requests.get(video_url, stream=True, timeout=300) as r:
+        r.raise_for_status()
+        with open(out_path, "wb") as f:
+            for part in r.iter_content(chunk_size=1 << 20):
+                f.write(part)
+    return out_path
+
+
 def generate_clip(
     prompt: str,
     out_path: Path,
@@ -29,7 +88,14 @@ def generate_clip(
     timeout_s: int = 1200,
     poll_every_s: int = 10,
 ) -> Path:
-    """Битта клипни генерация қилади ва .mp4 сифатида сақлайди."""
+    """Битта клипни генерация қилади ва .mp4 сифатида сақлайди.
+
+    VIDEO_PROVIDER=grok (стандарт) ёки kling. Grok учун XAI_API_KEY, Kling учун FAL_KEY керак.
+    """
+    provider = os.environ.get("VIDEO_PROVIDER", "grok").lower()
+    if provider == "grok":
+        return _grok_generate(prompt, out_path, duration, aspect_ratio, timeout_s)
+
     model = os.environ.get("FAL_MODEL", DEFAULT_FAL_MODEL)
     payload = {
         "prompt": prompt,
