@@ -124,7 +124,7 @@ class EpisodeBuilder:
         # Видео овоздан қисқа бўлса — охирги кадрни ушлаб турамиз; ўлчам ва FPS ни бир хиллаймиз
         vf = (f"scale={self.w}:{self.h}:force_original_aspect_ratio=increase,crop={self.w}:{self.h},"
               f"fps={FPS},tpad=stop_mode=clone:stop_duration=30,format=yuv420p")
-        _run(["ffmpeg", "-y", "-i", str(clip), "-i", str(audio), "-map", "0:v", "-map", "1:a",
+        _run(["ffmpeg", "-y", "-i", str(clip), "-i", str(audio), "-map", "0:v:0", "-map", "1:a",
               "-vf", vf, "-t", f"{length:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
               "-c:a", "aac", "-b:a", "192k", "-ar", "48000", str(part)])
         self.clock += length
