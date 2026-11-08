@@ -72,11 +72,14 @@ def _grok_generate(
     if not video_url:
         raise RuntimeError(f"Жавобда видео ҳаволаси йўқ: {data}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Аввал вақтинчалик файлга юкланади: узилган юклаш тайёр кадр сифатида қолмайди
+    tmp_path = out_path.with_suffix(".part")
     with requests.get(video_url, stream=True, timeout=300) as r:
         r.raise_for_status()
-        with open(out_path, "wb") as f:
+        with open(tmp_path, "wb") as f:
             for part in r.iter_content(chunk_size=1 << 20):
                 f.write(part)
+    tmp_path.replace(out_path)
     return out_path
 
 
