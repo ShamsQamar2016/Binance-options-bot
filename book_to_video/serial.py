@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from datetime import datetime
@@ -28,6 +29,24 @@ from episode_builder import EpisodeBuilder
 from series_planner import EpisodeScript, SeriesPlan, make_segments, plan_series, write_episode
 
 ROOT = Path("output/serials")
+LOG_FILE = Path("output/serial.log")
+logger = logging.getLogger("serial")
+
+
+def setup_logging() -> None:
+    """Журнални экранга ва output/serial.log файлга ёзади (cron ишлаганда из қолади)."""
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    root.setLevel(logging.INFO)
+    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    console = logging.StreamHandler()
+    console.setFormatter(fmt)
+    root.addHandler(file_handler)
+    root.addHandler(console)
 
 
 # ----------------------------- Ҳолат (state) -----------------------------
@@ -136,6 +155,7 @@ def produce_episode(serial: Serial, n: int, preview: bool = True) -> Path:
     builder = EpisodeBuilder(plan, serial.voices(), ep_dir, serial.settings.get("aspect", "16:9"))
     video = builder.build(script, Path(music) if music else None)
     print(f"   ✓ Тайёр: {video}")
+    logger.info("%s-қисм тайёр: %s", n, video)
 
     if preview and os.environ.get("TELEGRAM_BOT_TOKEN"):
         from video import compress_for_telegram
@@ -177,6 +197,7 @@ def publish(serial: Serial, n: int) -> None:
                                       "message_id": result.get("message_id")})
     serial.save_state()
     print(f"📢 {n}-қисм каналга чиқарилди")
+    logger.info("%s-қисм каналга чиқарилди (message_id=%s)", n, result.get("message_id"))
 
 
 def cmd_publish_next(args) -> None:
@@ -206,6 +227,7 @@ def cmd_daily(args) -> None:
             if any(e.number == ahead for e in serial.plan.episodes) and not serial.is_ready(ahead):
                 produce_episode(serial, ahead, preview=True)
     except Exception as exc:  # админни огоҳлантириш
+        logger.exception("Кундалик иш хатоси (%s-қисм)", n)
         if os.environ.get("TELEGRAM_BOT_TOKEN"):
             tg.send_text(f"⚠️ Сериал хатоси ({n}-қисм): {exc}"[:3000])
         raise
@@ -222,6 +244,7 @@ def cmd_status(args) -> None:
 
 def main() -> int:
     load_dotenv()
+    setup_logging()
     parser = argparse.ArgumentParser(description="Китобдан кундалик AI-сериал")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

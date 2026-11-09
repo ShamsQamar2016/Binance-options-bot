@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,31 @@ import time
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
+
+RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _retry(func, what: str, attempts: int = 4, base_delay: float = 3.0):
+    """Тармоқ хатоси ёки вақтинчалик 429/5xx да экспоненциал кутиш билан қайта уриниш."""
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = func()
+            if getattr(resp, "status_code", 200) in RETRY_STATUSES and attempt < attempts:
+                raise requests.HTTPError(f"HTTP {resp.status_code}", response=resp)
+            return resp
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            # Доимий хато (400, 401, 403 ва ҳ.к.) — қайта урини маслик
+            if isinstance(exc, requests.HTTPError) and status is not None and status not in RETRY_STATUSES:
+                raise
+            if attempt == attempts:
+                logger.error("%s: %d уринишдан кейин ҳам муваффақиятсиз: %s", what, attempts, exc)
+                raise
+            delay = base_delay * 2 ** (attempt - 1)
+            logger.warning("%s: уриниш %d/%d хато (%s). %.0f сонидан кейин қайта.", what, attempt, attempts, exc, delay)
+            time.sleep(delay)
 
 FAL_QUEUE_URL = "https://queue.fal.run"
 DEFAULT_FAL_MODEL = "fal-ai/kling-video/v2.1/standard/text-to-video"
@@ -50,16 +76,25 @@ def _grok_generate(
     }
 
     # 1) Сўровни юбориш → request_id
-    resp = requests.post(f"{XAI_BASE_URL}/videos/generations", json=payload, headers=headers, timeout=60)
+    started = time.time()
+    resp = _retry(
+        lambda: requests.post(f"{XAI_BASE_URL}/videos/generations", json=payload, headers=headers, timeout=60),
+        "Grok сўров юбориш",
+    )
     resp.raise_for_status()
     request_id = resp.json()["request_id"]
+    logger.info("Grok видео сўрови юборилди: %s (%ss, %s)", request_id, payload["duration"], payload["model"])
 
     # 2) Тайёр бўлишини кутиш: pending → done | failed
     deadline = time.time() + timeout_s
     while True:
-        data = requests.get(f"{XAI_BASE_URL}/videos/{request_id}", headers=headers, timeout=60).json()
+        data = _retry(
+            lambda: requests.get(f"{XAI_BASE_URL}/videos/{request_id}", headers=headers, timeout=60),
+            "Grok статус",
+        ).json()
         state = data.get("status")
         if state == "done":
+            logger.info("Grok видео тайёр: %s (%.0f сония)", request_id, time.time() - started)
             break
         if state == "failed":
             raise RuntimeError(f"Grok видео хатоси: {data.get('error')}")
@@ -156,7 +191,9 @@ def concat_clips(clips: list[Path], out_path: Path) -> Path:
         # Формат фарқ қилса — қайта кодлаш
         cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out_path)]
-        subprocess.run(cmd, check=True, capture_output=True)
+        res = subprocess.run(cmd, capture_output=True)
+        if res.returncode != 0:
+            raise RuntimeError(f"FFmpeg қайта кодлаш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
     list_file.unlink(missing_ok=True)
     return out_path
 
@@ -166,9 +203,11 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
     if video.stat().st_size <= max_mb * 1024 * 1024:
         return video
     out = video.with_name(video.stem + "_tg.mp4")
-    subprocess.run(
+    res = subprocess.run(
         ["ffmpeg", "-y", "-i", str(video), "-vf", "scale=-2:720", "-c:v", "libx264",
          "-crf", "28", "-preset", "veryfast", "-c:a", "aac", "-b:a", "96k", str(out)],
-        check=True, capture_output=True,
+        capture_output=True,
     )
+    if res.returncode != 0:
+        raise RuntimeError(f"FFmpeg сиқиш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
     return out
