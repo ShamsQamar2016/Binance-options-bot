@@ -21,6 +21,8 @@ from pathlib import Path
 
 import requests
 
+from fileutil import write_text_atomic
+
 logger = logging.getLogger(__name__)
 
 API = "https://api.elevenlabs.io/v1"
@@ -108,8 +110,9 @@ def build_voice_map(plan, path: Path, create: bool = False, previews_dir: Path |
             entry["voice_id"] = design_voice(f"{plan.series_title[:40]} — {name}", spec.description,
                                              spec.gender, preview, sample)
         voices[cid] = entry
-        path.write_text(json.dumps(voices | {k: v for k, v in existing.items() if k not in voices},
-                                   ensure_ascii=False, indent=2), encoding="utf-8")
+        # Ҳар овоз яратилгач сақланади: жараён узилса, яратилган овозлар йўқолмайди
+        write_text_atomic(path, json.dumps(voices | {k: v for k, v in existing.items() if k not in voices},
+                                           ensure_ascii=False, indent=2))
     return voices
 
 

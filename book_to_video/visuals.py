@@ -16,9 +16,11 @@ import logging
 import os
 import re
 import subprocess
+import threading
 from pathlib import Path
 
 import fal_api
+from fileutil import temp_name
 from series_planner import Character, Location, SeriesPlan, Shot, pick_best_image
 
 logger = logging.getLogger(__name__)
@@ -114,7 +116,9 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
     index = {key: i for i, (key, _) in enumerate(refs, 1)}
     names, cast = {}, []
     for cid in shot.characters_in_shot:
-        c = chars[cid]
+        c = chars.get(cid)
+        if c is None:  # номаълум id (мас. script.json қўлда таҳрирланганда) — эътиборсиз
+            continue
         where = f" (the person in reference image {index[cid]})" if cid in index else ""
         names[cid] = f"{_label(c)}{where}"
         cast.append(f"- {_label(c)}{where}: {_person(c)}. {c.appearance} Wearing {c.costume}.")
@@ -187,12 +191,22 @@ def _ref_label(plan: SeriesPlan, key: str) -> str:
     return f"персонаж {c.name} ({key})" if c else key
 
 
+_THUMB_LOCK = threading.Lock()
+
+
 def _thumb(path: Path) -> Path:
-    """Claude'га юбориш учун кичрайтирилган JPEG."""
+    """Claude'га юбориш учун кичрайтирилган JPEG.
+
+    Бир эталон расмни бир неча кадр бир вақтда ишлатади, шунинг учун нусха навбат билан ва
+    вақтинчалик файл орқали ясалади: бошқа поток чала файлни ўқиб қолмайди.
+    """
     out = path.with_name(path.stem + "_thumb.jpg")
-    if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf",
-                        "scale='min(768,iw)':-2", "-q:v", "4", str(out)], check=True)
+    with _THUMB_LOCK:
+        if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
+            tmp = temp_name(out)
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf",
+                            "scale='min(768,iw)':-2", "-q:v", "4", str(tmp)], check=True)
+            os.replace(tmp, out)
     return out
 
 

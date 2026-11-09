@@ -35,7 +35,9 @@ import telegram_sender as tg
 from book_sources import download_from_telegram, download_from_url, load_text
 from dubbing import build_voice_map
 from episode_builder import EpisodeBuilder, ensure_references
-from series_planner import EpisodeScript, SeriesPlan, make_segments, plan_series, speech_seconds, write_episode
+from fileutil import write_text_atomic
+from series_planner import (EpisodeScript, SeriesPlan, long_speech_shots, make_segments, normalize_script,
+                            plan_series, write_episode)
 
 ROOT = Path("output/serials")
 LOG_FILE = Path("output/serial.log")
@@ -83,7 +85,7 @@ class Serial:
         self.state = json.loads(self.state_path.read_text(encoding="utf-8")) if self.state_path.exists() else {"published": []}
 
     def save_state(self) -> None:
-        self.state_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_text_atomic(self.state_path, json.dumps(self.state, ensure_ascii=False, indent=2))
 
     def ep_dir(self, n: int) -> Path:
         return self.dir / f"episode_{n:02d}"
@@ -144,14 +146,14 @@ def cmd_plan(args) -> None:
     text = load_text(book_path)
     segments = make_segments(text)
     print(f"📖 {book_path.name}: {len(text):,} белги, {len(segments)} бўлак")
-    (folder / "segments.json").write_text(json.dumps(segments, ensure_ascii=False), encoding="utf-8")
-    (folder / "settings.json").write_text(json.dumps({
+    write_text_atomic(folder / "segments.json", json.dumps(segments, ensure_ascii=False))
+    write_text_atomic(folder / "settings.json", json.dumps({
         "minutes": args.minutes, "music": args.music,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    }, ensure_ascii=False, indent=2))
 
     print("🤖 Claude бутун китобни ўқиб, сериал режасини тузмоқда (бир неча дақиқа)...")
     plan = plan_series(segments, args.minutes, args.episodes, args.wishes)
-    (folder / "plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    write_text_atomic(folder / "plan.json", plan.model_dump_json(indent=2))
 
     serial = Serial(folder)
     serial.voices(create=False)  # voices.json (овозлар `voices` буйруғида яратилади)
@@ -198,7 +200,7 @@ def cmd_voices(args) -> None:
         for key in redo:
             if key in data:
                 data[key]["voice_id"] = ""
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_text_atomic(path, json.dumps(data, ensure_ascii=False, indent=2))
     voices = serial.voices(create=True)
     print(f"✓ Овозлар: {path}")
     previews = serial.dir / "voice_previews"
@@ -220,20 +222,24 @@ def load_script(serial: Serial, n: int) -> EpisodeScript:
     script_path = ep_dir / "script.json"
     if script_path.exists():
         try:
-            return EpisodeScript.model_validate_json(script_path.read_text(encoding="utf-8"))
-        except ValidationError:
+            script = EpisodeScript.model_validate_json(script_path.read_text(encoding="utf-8"))
+        except ValidationError as exc:
             raise SystemExit(
-                f"{script_path} эски форматда. {ep_dir} папкасини бошқа номга ўзгартириб, қайта ишга туширинг."
+                f"{script_path} нотўғри ёки эски форматда. Хатони тузатинг ёки {ep_dir} папкасини бошқа номга "
+                f"ўзгартириб, қайта ишга туширинг (сценарий янгидан ёзилади).\n{exc}"
             )
-    print(f"✍️  {n}-қисм сценарийси ёзилмоқда...")
-    prev = next((e for e in serial.plan.episodes if e.number == n - 1), None)
-    prev_summary = f"{prev.summary} Финал: {prev.cliffhanger}" if prev else ""
-    script = write_episode(serial.plan, ep_plan, serial.segments, serial.settings["minutes"], prev_summary)
-    script_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
-    long_shots = [s.number for s in script.shots
-                  if sum(speech_seconds(line.text) for line in s.lines) > s.duration_seconds + 1.5]
+        # Қўлда таҳрирланган сценарий ҳам текширилади (номаълум id, кадр узунлиги ва ҳ.к.)
+        script = normalize_script(script, serial.plan, n, renumber=False)
+    else:
+        print(f"✍️  {n}-қисм сценарийси ёзилмоқда...")
+        prev = next((e for e in serial.plan.episodes if e.number == n - 1), None)
+        prev_summary = f"{prev.summary} Финал: {prev.cliffhanger}" if prev else ""
+        script = write_episode(serial.plan, ep_plan, serial.segments, serial.settings["minutes"], prev_summary)
+        write_text_atomic(script_path, script.model_dump_json(indent=2))
+    long_shots = long_speech_shots(script.model_dump())
     if long_shots:
-        print(f"   ℹ️  Нутқ узун кадрлар (видео секинлашади ёки узайтирилади): {long_shots}")
+        print("   ℹ️  Нутқи узун кадрлар (видео секинлашади ёки охирги кадр ушлаб турилади): "
+              + ", ".join(f"{n_} ({s} с)" for n_, s in long_shots))
     return script
 
 

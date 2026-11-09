@@ -12,6 +12,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from series_planner import MAX_SPEECH_PER_SHOT, long_speech_shots
+
 WORD = re.compile(r"[\w'ʻ’]+", re.UNICODE)
 PHRASE_LEN = 3          # нечта сўзли иборалар текширилади
 PHRASE_MIN_COUNT = 3    # шунча ва ундан кўп учраса — огоҳлантирамиз
@@ -67,13 +69,10 @@ def check(script: dict) -> list[str]:
             break
         problems.append(f"[кўп учрайди] «{phrase}» — {n} марта")
 
-    # 4) Кадрга сиғмайдиган нутқ (рус нутқи ~14.5 белги/сония)
-    for shot in script.get("shots", []):
-        speech = sum(len(" ".join((line.get("text") or "").split())) for line in shot.get("lines", [])) / 14.5
-        planned = shot.get("duration_seconds") or 0
-        if speech > max(planned, 8) + 0.5:
-            problems.append(f"[узун нутқ] кадр {shot.get('number')}: ~{speech:.1f} с нутқ, кадр {planned} с "
-                            "— репликани қисқартиринг ёки кадрни иккига бўлинг")
+    # 4) Кадрга сиғмайдиган нутқ (serial.py билан бир хил қоида)
+    for number, seconds in long_speech_shots(script):
+        problems.append(f"[узун нутқ] кадр {number}: ~{seconds} с нутқ (кадрга {MAX_SPEECH_PER_SHOT:g} с гача сиғади) "
+                        "— репликани қисқартиринг ёки кадрни иккига бўлинг")
 
     return problems
 

@@ -17,18 +17,17 @@ import re
 from pathlib import Path
 from typing import Literal
 
-import anthropic
 from pydantic import BaseModel, Field
 
 from book_reader import split_into_chunks
-
-MODEL = "claude-opus-5-5"
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
+from claude_client import structured as _structured
+from claude_client import text as _text
 
 SEGMENT_CHARS = 8_000            # китоб шу ўлчамдаги рақамланган бўлакларга бўлинади
 MAX_CHARS_SINGLE_REQUEST = 800_000
 
 SPEECH_CHARS_PER_SECOND = 14.5   # рус нутқи тахминан шунча белги/сония
+MAX_SPEECH_PER_SHOT = 7.5        # бир кадрга сиғадиган нутқ (видео 8 с гача; ундан узуни секинлашади ёки қотади)
 
 
 # ----------------------------- Маълумот тузилмалари -----------------------------
@@ -235,49 +234,6 @@ EPISODE_SYSTEM = """Ты — сценарист и режиссёр вертик
 
 # ----------------------------- Ёрдамчи функциялар -----------------------------
 
-def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic()
-
-
-def _check(message) -> None:
-    if message.stop_reason == "refusal":
-        details = getattr(message, "stop_details", None)
-        raise RuntimeError(f"Claude сўровни рад этди. {getattr(details, 'explanation', '') or ''}".strip())
-    if message.stop_reason == "max_tokens":
-        raise RuntimeError("Жавоб max_tokens чегарасига етиб кесилди.")
-
-
-def _structured(system: str, content, output_type, effort: str = "high", max_tokens: int = 64000):
-    """Claude'дан Pydantic схемасига мос жавоб олади. content — матн ёки контент блоклари рўйхати."""
-    with _client().beta.messages.stream(
-        model=MODEL,
-        max_tokens=max_tokens,
-        betas=[FALLBACK_BETA],
-        fallbacks="default",
-        system=system,
-        output_config={"effort": effort},
-        output_format=output_type,
-        messages=[{"role": "user", "content": content}],
-    ) as stream:
-        message = stream.get_final_message()
-    _check(message)
-    return message.parsed_output
-
-
-def _text(prompt: str, effort: str = "medium") -> str:
-    with _client().beta.messages.stream(
-        model=MODEL,
-        max_tokens=32000,
-        betas=[FALLBACK_BETA],
-        fallbacks="default",
-        output_config={"effort": effort},
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        message = stream.get_final_message()
-    _check(message)
-    return "".join(b.text for b in message.content if b.type == "text")
-
-
 def make_segments(text: str) -> list[str]:
     return split_into_chunks(text, SEGMENT_CHARS)
 
@@ -288,7 +244,20 @@ def _tagged(segments: list[str], start: int = 1) -> str:
 
 def speech_seconds(text: str) -> float:
     """Репликанинг тахминий узунлиги (сония) — сценарийни текшириш учун."""
-    return len(re.sub(r"\s+", " ", text).strip()) / SPEECH_CHARS_PER_SECOND
+    return len(re.sub(r"\s+", " ", text or "").strip()) / SPEECH_CHARS_PER_SECOND
+
+
+def long_speech_shots(script: dict) -> list[tuple[int, float]]:
+    """Нутқи битта кадрга сиғмайдиган кадрлар: [(кадр рақами, тахминий сония)].
+
+    script — script.json мазмуни (dict). serial.py ва check_script.py бир хил қоидани ишлатади.
+    """
+    out = []
+    for shot in script.get("shots", []):
+        seconds = sum(speech_seconds(line.get("text", "")) for line in shot.get("lines", []))
+        if seconds > MAX_SPEECH_PER_SHOT:
+            out.append((shot.get("number"), round(seconds, 1)))
+    return out
 
 
 # ----------------------------- Асосий функциялар -----------------------------
@@ -321,10 +290,27 @@ def plan_series(segments: list[str], episode_minutes: float, episodes: int | Non
         + (f"\nДополнительные пожелания: {wishes}" if wishes else "")
     )
     plan: SeriesPlan = _structured(PLAN_SYSTEM, prompt, SeriesPlan, effort="high", max_tokens=128000)
+    return normalize_plan(plan, len(segments))
 
-    for ep in plan.episodes:  # бўлак оралиқларини тўғрилаш
-        ep.segment_start = max(1, min(ep.segment_start, len(segments)))
-        ep.segment_end = max(ep.segment_start, min(ep.segment_end, len(segments)))
+
+def normalize_plan(plan: SeriesPlan, n_segments: int) -> SeriesPlan:
+    """Claude режасини тартибга солади: қисмлар 1, 2, 3… бўлиб рақамланади, бўлак оралиқлари текширилади."""
+    for ep in plan.episodes:
+        ep.segment_start = max(1, min(ep.segment_start, n_segments))
+        ep.segment_end = max(ep.segment_start, min(ep.segment_end, n_segments))
+    # Қисмлар китоб тартибида ва 1 дан бошлаб узлуксиз рақамланади (0, такрор ёки ташлаб кетилган рақам бўлмасин)
+    plan.episodes.sort(key=lambda e: (e.segment_start, e.number))
+    for i, ep in enumerate(plan.episodes, 1):
+        ep.number = i
+    expected = 1
+    for ep in plan.episodes:
+        if ep.segment_start > expected:
+            print(f"   ⚠️  {expected}–{ep.segment_start - 1}-бўлаклар бирорта қисмга кирмаган ({ep.number}-қисмдан олдин)")
+        elif ep.segment_start < expected:
+            print(f"   ⚠️  {ep.number}-қисм олдинги қисм билан устма-уст тушади (бўлак {ep.segment_start})")
+        expected = max(expected, ep.segment_end + 1)
+    if plan.episodes and expected <= n_segments:
+        print(f"   ⚠️  Китоб охири ({expected}–{n_segments}-бўлаклар) бирорта қисмга кирмаган")
     for c in plan.characters:
         c.id = _slug(c.id)
     for loc in plan.locations:
@@ -385,13 +371,23 @@ def episode_system() -> str:
     return EPISODE_SYSTEM
 
 
-def normalize_script(script: EpisodeScript, plan: SeriesPlan, number: int) -> EpisodeScript:
-    """Claude жавобидаги номаълум id ларни тозалаш ва чегараларни тўғрилаш."""
+def normalize_script(script: EpisodeScript, plan: SeriesPlan, number: int, renumber: bool = True) -> EpisodeScript:
+    """Номаълум id ларни тозалаш ва чегараларни тўғрилаш.
+
+    Claude ёзган янги сценарийда ҳам, қўлда таҳрирланган script.json да ҳам ишлатилади.
+    renumber=False: кадр рақамлари сақланади (тайёр расм ва видеолар шу рақамларга боғланган),
+    фақат рақамлар такрорланса ёки нотўғри бўлса қайта рақамланади.
+    """
     known = {c.id for c in plan.characters}
     locations = {loc.id for loc in plan.locations}
     first_location = plan.locations[0].id if plan.locations else ""
+    numbers = [s.number for s in script.shots]
+    if renumber or len(set(numbers)) != len(numbers) or any(n < 1 or n > 99 for n in numbers):
+        if not renumber:
+            print("   ⚠️  script.json да кадр рақамлари такрорланган ёки нотўғри — кадрлар қайта рақамланди")
+        for i, shot in enumerate(script.shots, 1):
+            shot.number = i
     for i, shot in enumerate(script.shots, 1):
-        shot.number = i
         shot.duration_seconds = max(3, min(8, int(shot.duration_seconds)))
         shot.characters_in_shot = [c for c in dict.fromkeys(_slug(c) for c in shot.characters_in_shot) if c in known][:3]
         if _slug(shot.location_id) in locations:

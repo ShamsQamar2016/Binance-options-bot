@@ -7,6 +7,9 @@
   - duration, aspect_ratio, resolution каби танловли майдонлар энг яқин рухсат этилган қийматга ўтказилади;
   - расм майдони номи (image_url / start_image_url / first_frame_url ...) моделга қараб танланади.
 Схема олинмаса, сўров ўзгаришсиз юборилади.
+
+Пул тежаш: ҳар бир пулли сўров (request_id) журналга ёзилади. Кутиш вақти тугаса, алоқа узилса ёки
+дастур тўхтаса, кейинги ишга туширишда янги сўров юборилмайди — ўша сўровнинг натижаси кутилади.
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ import time
 from pathlib import Path
 
 import requests
+
+from fileutil import read_json_cache, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -59,16 +64,14 @@ def upload(path: Path) -> str:
     path = Path(path)
     digest = hashlib.sha1(path.read_bytes()).hexdigest()
     with _LOCK:
-        cache = json.loads(_UPLOADS.read_text(encoding="utf-8")) if _UPLOADS.exists() else {}
-    hit = cache.get(digest)
-    if hit and time.time() - hit["at"] < UPLOAD_MAX_AGE:
+        hit = read_json_cache(_UPLOADS, {}).get(digest)
+    if hit and time.time() - hit.get("at", 0) < UPLOAD_MAX_AGE:
         return hit["url"]
     url = _with_retry(lambda: _client().upload_file(path), f"юклаш {path.name}")
     with _LOCK:
-        cache = json.loads(_UPLOADS.read_text(encoding="utf-8")) if _UPLOADS.exists() else {}
+        cache = read_json_cache(_UPLOADS, {})
         cache[digest] = {"url": url, "at": time.time()}
-        _UPLOADS.parent.mkdir(parents=True, exist_ok=True)
-        _UPLOADS.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+        write_json_atomic(_UPLOADS, cache)
     return url
 
 
@@ -132,9 +135,10 @@ def _input_schema(openapi: dict) -> dict | None:
 def input_schema(endpoint: str) -> dict | None:
     """Модел кириш параметрлари схемаси ({properties, required}) ёки None."""
     cached = _schema_path(endpoint)
-    if cached.exists():
-        age = time.time() - cached.stat().st_mtime
-        data = json.loads(cached.read_text(encoding="utf-8"))
+    with _LOCK:
+        data = read_json_cache(cached, None)
+        age = time.time() - cached.stat().st_mtime if data is not None else 0
+    if data is not None:
         if (data and age < SCHEMA_MAX_AGE) or (not data and age < 3600):  # топилмаганини 1 соатдан кейин қайта сўраймиз
             return data or None
     schema = None
@@ -158,8 +162,7 @@ def input_schema(endpoint: str) -> dict | None:
         except (requests.RequestException, ValueError) as exc:
             logger.info("fal.ai схемаси олинмади (%s): %s", url, exc)
     with _LOCK:
-        SCHEMA_DIR.mkdir(parents=True, exist_ok=True)
-        cached.write_text(json.dumps(schema or {}, ensure_ascii=False, indent=1), encoding="utf-8")
+        write_json_atomic(cached, schema or {})
     if not schema:
         logger.warning("%s схемаси топилмади — сўров ўзгаришсиз юборилади", endpoint)
     return schema
@@ -256,18 +259,92 @@ def allowed_durations(endpoint: str) -> list[float] | None:
 
 # ----------------------------- Ишга тушириш -----------------------------
 
+_JOURNAL = Path("output/.fal_requests.json")
+JOURNAL_MAX_AGE = 24 * 3600   # fal.ai натижаларни шунча вақт сақлайди деб ҳисоблаймиз
+POLL_EVERY = 5
+
+
+class _RequestGone(Exception):
+    """Журналдаги сўров fal.ai да топилмади (муддати ўтган)."""
+
+
+def _journal(update=None):
+    """Пулли сўровлар журнали: {калит: {endpoint, request_id, at}}. update(journal) — ўзгартириш."""
+    with _LOCK:
+        data = read_json_cache(_JOURNAL, {})
+        if update is not None:
+            update(data)
+            write_json_atomic(_JOURNAL, data)
+        return data
+
+
 def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
-    """Моделни навбат орқали ишга туширади ва натижани (JSON) қайтаради."""
+    """Моделни навбат орқали ишга туширади ва натижани (JSON) қайтаради.
+
+    Сўров fal.ai га фақат БИР МАРТА юборилади. Кутиш вақтида хато бўлса ёки вақт тугаса, сўров
+    қайта юборилмайди: request_id журналда қолади ва кейинги ишга туширишда ўша сўровнинг натижаси
+    олинади (иккинчи марта пул тўланмайди).
+    """
     arguments = fit(endpoint, payload)
-    logger.info("fal.ai → %s %s", endpoint, json.dumps(_short(arguments), ensure_ascii=False)[:600])
+    key = hashlib.sha1(f"{endpoint}|{json.dumps(arguments, sort_keys=True, ensure_ascii=False)}".encode()).hexdigest()
+    client = _client()
     started = time.time()
 
-    def call():
-        return _client().subscribe(endpoint, arguments=arguments, with_logs=False, client_timeout=timeout_s)
+    entry = _journal().get(key)
+    if entry and time.time() - entry.get("at", 0) < JOURNAL_MAX_AGE:
+        logger.info("fal.ai: олдинги сўров давом эттирилмоқда %s (%s)", entry["request_id"], endpoint)
+        try:
+            return _wait(client, endpoint, entry["request_id"], key, timeout_s, started)
+        except _RequestGone:
+            logger.warning("fal.ai: олдинги сўров %s топилмади — янгиси юборилади", entry["request_id"])
+            _journal(lambda j: j.pop(key, None))
 
-    result = _with_retry(call, endpoint)
-    logger.info("fal.ai ← %s (%.0f сония)", endpoint, time.time() - started)
-    return result
+    logger.info("fal.ai → %s %s", endpoint, json.dumps(_short(arguments), ensure_ascii=False)[:600])
+    handle = _with_retry(lambda: client.submit(endpoint, arguments=arguments), f"{endpoint} юбориш", attempts=2)
+    _journal(lambda j: j.__setitem__(key, {"endpoint": endpoint, "request_id": handle.request_id, "at": time.time()}))
+    try:
+        return _wait(client, endpoint, handle.request_id, key, timeout_s, started)
+    except _RequestGone:
+        _journal(lambda j: j.pop(key, None))
+        raise RuntimeError(f"fal.ai: {endpoint} сўрови {handle.request_id} йўқолиб қолди")
+
+
+def _wait(client, endpoint: str, request_id: str, key: str, timeout_s: int, started: float) -> dict:
+    """Сўров тайёр бўлишини кутади (қайта юбормасдан) ва натижасини қайтаради."""
+    import fal_client
+
+    deadline = time.time() + timeout_s
+    failures = 0
+    while True:
+        try:
+            status = client.status(endpoint, request_id)
+            failures = 0
+        except Exception as exc:  # тармоқ узилиши — фақат ҳолатни қайта сўраймиз
+            code = getattr(exc, "status_code", None)
+            if code in (404, 410):
+                raise _RequestGone(request_id) from exc
+            failures += 1
+            if failures >= 12 or (code is not None and code < 500 and code != 429):
+                raise RuntimeError(f"fal.ai: {endpoint} ҳолатини олиб бўлмади (request_id={request_id}): {exc}. "
+                                   "Қайта ишга туширсангиз, шу сўровнинг натижаси кутилади.") from exc
+            time.sleep(min(60, POLL_EVERY * failures))
+            continue
+        if isinstance(status, fal_client.Completed):
+            if status.error:
+                _journal(lambda j: j.pop(key, None))
+                raise RuntimeError(f"fal.ai: {endpoint} хатоси ({status.error_type}): {status.error}")
+            try:
+                result = _with_retry(lambda: client.result(endpoint, request_id), f"{endpoint} натижа")
+            except Exception:
+                _journal(lambda j: j.pop(key, None))  # доимий хато (мас. параметр нотўғри) — журналда қолмасин
+                raise
+            _journal(lambda j: j.pop(key, None))
+            logger.info("fal.ai ← %s (%.0f сония)", endpoint, time.time() - started)
+            return result
+        if time.time() > deadline:
+            raise TimeoutError(f"fal.ai: {endpoint} {timeout_s} сонияда тайёр бўлмади (request_id={request_id}). "
+                               "Қайта ишга туширсангиз, шу сўровнинг натижаси кутилади — қайта пул тўланмайди.")
+        time.sleep(POLL_EVERY)
 
 
 def _short(data: dict) -> dict:

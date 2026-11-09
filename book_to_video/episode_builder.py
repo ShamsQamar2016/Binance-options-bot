@@ -237,11 +237,15 @@ class EpisodeBuilder:
 
     def voice_lines(self, key: str, lines: list[Line]) -> list[Voiced]:
         voiced: list[Voiced] = []
-        model = os.environ.get("ELEVENLABS_MODEL", "eleven_v3")
+        # Овоз файли номида овозга таъсир қиладиган ҳамма созламалар бор: бирортаси ўзгарса,
+        # реплика янгидан ясалади ва бир қисмда эски ва янги овоз аралашиб қолмайди.
+        settings = (os.environ.get("ELEVENLABS_MODEL", "eleven_v3"), os.environ.get("ELEVENLABS_LANGUAGE_CODE", "ru"))
         t = LEAD_IN
         for i, line in enumerate(lines, 1):
             voice = self._voice(line.speaker)
-            path = self.dir / "audio" / f"{key}_{i:02d}_{_sha(line.text, line.delivery, voice.get('voice_id'), model)}.mp3"
+            tag = _sha(line.text, line.delivery, voice.get("voice_id"), voice.get("stability", 0.5),
+                       voice.get("similarity_boost", 0.75), *settings)
+            path = self.dir / "audio" / f"{key}_{i:02d}_{tag}.mp3"
             if not path.exists():
                 synthesize(line.text, voice, line.delivery, path)
             v = Voiced(path, audio_duration(path), line.text, line.speaker, t)
@@ -311,6 +315,11 @@ class EpisodeBuilder:
                 result.lipsynced = True
 
         vlen = media_duration(video)
+        # Кадр узунлиги: нутқ видеога сиғса — видеодан узун бўлмайди (қотиб қолган кадр бўлмаслиги учун,
+        # масалан script.json да duration оширилган, видео эса аввал қисқароқ ясалган бўлса).
+        # Нутқ сиғмаса — видео секинлаштирилади (лаб синхрони йўқ кадрда), охири ушлаб турилади.
+        length = min(length, vlen) if speech <= vlen else speech
+        result.length = length
         factor = 1.0
         if not result.lipsynced and length > vlen:
             factor = min(MAX_STRETCH, length / vlen)
@@ -344,14 +353,20 @@ class EpisodeBuilder:
         rows = math.ceil(len(script.shots) / 6)
         out = self.dir / "storyboard.jpg"
         font = next((f for f in [os.environ.get("FONT_FILE", "")] + FONT_CANDIDATES if f and Path(f).exists()), None)
-        label = ""
         if font:
             shutil.copy(font, self.dir / "sheet_font.ttf")
-            label = (",drawtext=fontfile=sheet_font.ttf:text='%{eif\\:n+1\\:d}':x=12:y=10:fontsize=44:"
-                     "fontcolor=white:borderw=3:bordercolor=black")
-        _run(["ffmpeg", "-y", "-v", "error", "-framerate", "1", "-start_number", "1", "-i", "clips/shot_%02d.png",
-              "-vf", f"scale=270:480{label},tile=6x{rows}:padding=6:margin=6", "-frames:v", "1", "-q:v", "3",
-              out.name], cwd=self.dir)
+        sheet = self.dir / "sheet"
+        shutil.rmtree(sheet, ignore_errors=True)
+        sheet.mkdir()
+        # Ҳар расмга кадрнинг ҳақиқий рақами ёзилади (сценарийдан кадр ўчирилган бўлса ҳам тўғри)
+        for i, shot in enumerate(script.shots, 1):
+            label = (f",drawtext=fontfile=sheet_font.ttf:text='{int(shot.number)}':x=12:y=10:fontsize=44:"
+                     "fontcolor=white:borderw=3:bordercolor=black") if font else ""
+            _run(["ffmpeg", "-y", "-v", "error", "-i", f"clips/shot_{shot.number:02d}.png",
+                  "-vf", f"scale=270:480{label}", "-q:v", "3", f"sheet/{i:03d}.jpg"], cwd=self.dir)
+        _run(["ffmpeg", "-y", "-v", "error", "-framerate", "1", "-i", "sheet/%03d.jpg",
+              "-vf", f"tile=6x{rows}:padding=6:margin=6", "-frames:v", "1", "-q:v", "3", out.name], cwd=self.dir)
+        shutil.rmtree(sheet, ignore_errors=True)
         return out
 
     # ---------- йиғиш ----------
@@ -519,11 +534,22 @@ class EpisodeBuilder:
         else:
             af = "[1:a][2:a][3:a]amix=inputs=3:normalize=0:duration=first,"
         af += "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]"
+        # Аввал вақтинчалик файлга ёзилади: жараён узилса, чала видео «тайёр қисм» бўлиб қолмайди
+        tmp = self.dir / "episode.tmp.mp4"
+        tmp.unlink(missing_ok=True)
         cmd += ["-filter_complex", f"{vf};{af}", "-map", "[v]", "-map", "[a]", "-t", f"{total:.3f}",
                 "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-profile:v", "high", "-pix_fmt", "yuv420p",
                 "-r", str(FPS), "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart",
-                "episode.mp4"]
-        _run(cmd, cwd=self.dir)
+                tmp.name]
+        try:
+            _run(cmd, cwd=self.dir)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+        if media_duration(tmp) < total - 1.0:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(f"Йиғилган видео кутилганидан қисқа чиқди ({total:.1f} с бўлиши керак эди)")
+        os.replace(tmp, self.dir / "episode.mp4")
         return self.dir / "episode.mp4"
 
     def _timeline(self, script: EpisodeScript, results: list[ShotResult], total: float) -> None:

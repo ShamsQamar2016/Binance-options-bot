@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-import anthropic
 from pydantic import BaseModel, Field
 
 from book_reader import split_into_chunks
-
-MODEL = "claude-opus-5-5"
+from claude_client import structured, text
 
 # Claude Opus 5.5 контексти 1M токен. Кирилл матни ~2-3 белги/токен,
 # шунинг учун 800 минг белгигача бўлган китоб бир сўровда юборилади.
 # Ундан узун бўлса — аввал бўлакма-бўлак қисқача мазмун олинади.
 MAX_CHARS_SINGLE_REQUEST = 800_000
 CHUNK_CHARS = 300_000
-
-# Хавфсизлик фильтри сўровни рад этса, API уни автоматик бошқа моделда
-# қайта ишлатади ("fallbacks": "default").
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
 class Scene(BaseModel):
@@ -59,48 +53,18 @@ SYSTEM_PROMPT = """Сен тажрибали кино сценаристи ва 
 - duration_seconds фақат 5 ёки 10 бўлсин."""
 
 
-def _client() -> anthropic.Anthropic:
-    # ANTHROPIC_API_KEY муҳит ўзгарувчисидан олинади
-    return anthropic.Anthropic()
-
-
-def _check_stop_reason(message) -> None:
-    if message.stop_reason == "refusal":
-        details = getattr(message, "stop_details", None)
-        reason = getattr(details, "explanation", None) if details else None
-        raise RuntimeError(f"Claude сўровни рад этди. {reason or ''}".strip())
-    if message.stop_reason == "max_tokens":
-        raise RuntimeError("Жавоб max_tokens чегарасига етиб кесилди — саҳналар сонини камайтиринг.")
-
-
-def _summarize_chunk(client: anthropic.Anthropic, chunk: str, index: int, total: int) -> str:
+def _summarize_chunk(chunk: str, index: int, total: int) -> str:
     """Жуда узун китоб учун: битта бўлакнинг батафсил қисқача мазмуни."""
-    with client.beta.messages.stream(
-        model=MODEL,
-        max_tokens=16000,
-        betas=[FALLBACK_BETA],
-        fallbacks="default",
-        output_config={"effort": "medium"},
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Бу китобнинг {index}/{total}-қисми. Уни китоб тилида батафсил қисқача баён қил: "
-                    "воқеалар кетма-кетлиги, персонажлар (ташқи кўриниши билан), жойлар, "
-                    "энг визуал ва драматик лаҳзалар.\n\n"
-                    f"<book_part>\n{chunk}\n</book_part>"
-                ),
-            }
-        ],
-    ) as stream:
-        message = stream.get_final_message()
-    _check_stop_reason(message)
-    return "".join(b.text for b in message.content if b.type == "text")
+    return text(
+        f"Бу китобнинг {index}/{total}-қисми. Уни китоб тилида батафсил қисқача баён қил: "
+        "воқеалар кетма-кетлиги, персонажлар (ташқи кўриниши билан), жойлар, "
+        "энг визуал ва драматик лаҳзалар.\n\n"
+        f"<book_part>\n{chunk}\n</book_part>",
+        effort="medium", max_tokens=16000,
+    )
 
 
 def create_trailer_script(book_text: str, num_scenes: int = 6, extra_wishes: str = "") -> TrailerScript:
-    client = _client()
-
     if len(book_text) <= MAX_CHARS_SINGLE_REQUEST:
         book_block = f"<book>\n{book_text}\n</book>"
     else:
@@ -108,7 +72,7 @@ def create_trailer_script(book_text: str, num_scenes: int = 6, extra_wishes: str
         summaries = []
         for i, chunk in enumerate(chunks, 1):
             print(f"  • Китоб қисми {i}/{len(chunks)} таҳлил қилинмоқда...")
-            summaries.append(_summarize_chunk(client, chunk, i, len(chunks)))
+            summaries.append(_summarize_chunk(chunk, i, len(chunks)))
         joined = "\n\n".join(f"<part index=\"{i}\">\n{s}\n</part>" for i, s in enumerate(summaries, 1))
         book_block = f"<book_summary>\n{joined}\n</book_summary>"
 
@@ -118,20 +82,10 @@ def create_trailer_script(book_text: str, num_scenes: int = 6, extra_wishes: str
         f"Шу китоб асосида {num_scenes} та саҳнадан иборат трейлер сценарийсини туз.{wishes}"
     )
 
-    with client.beta.messages.stream(
-        model=MODEL,
-        max_tokens=64000,
-        betas=[FALLBACK_BETA],
-        fallbacks="default",
-        system=SYSTEM_PROMPT,
-        output_config={"effort": "high"},
-        output_format=TrailerScript,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        message = stream.get_final_message()
-
-    _check_stop_reason(message)
-    script: TrailerScript = message.parsed_output
+    script: TrailerScript = structured(
+        SYSTEM_PROMPT, prompt, TrailerScript, effort="high", max_tokens=64000,
+        hint="Саҳналар сонини камайтиринг.",
+    )
 
     # Видео модели фақат 5 ёки 10 сония қабул қилади
     for scene in script.scenes:
