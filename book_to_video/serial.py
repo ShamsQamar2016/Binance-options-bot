@@ -140,7 +140,25 @@ def produce_episode(serial: Serial, n: int, preview: bool = True) -> Path:
     ep_dir.mkdir(parents=True, exist_ok=True)
     minutes = serial.settings["minutes"]
 
+    # Тил назорати: қисм бир тилда ясалгач, бошқа тилда аралаштирилмайди
+    lang = os.environ.get("DUB_LANGUAGE", "ru").lower()
+    marker = ep_dir / "dub_language.txt"
     script_path = ep_dir / "script.json"
+    if marker.exists():
+        made_in = marker.read_text(encoding="utf-8").strip()
+        if made_in != lang:
+            raise SystemExit(
+                f"{n}-қисм «{made_in}» тилида ясалган, ҳозирги тил «{lang}». "
+                f"Аралашмаслиги учун {ep_dir} папкасини бошқа номга ўзгартириб қайта ишга туширинг."
+            )
+    elif script_path.exists():
+        raise SystemExit(
+            f"{ep_dir} папкасида тил маркери йўқ (эски қисм, тили номаълум). "
+            "Уни бошқа номга ўзгартириб қайта ишга туширинг."
+        )
+    else:
+        marker.write_text(lang, encoding="utf-8")
+
     if script_path.exists():
         script = EpisodeScript.model_validate_json(script_path.read_text(encoding="utf-8"))
     else:
