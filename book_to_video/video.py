@@ -234,3 +234,26 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
     if res.returncode != 0:
         raise RuntimeError(f"FFmpeg сиқиш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
     return out
+
+
+def still_to_clip(image: Path, out_path: Path, duration: float, width: int = 1280, height: int = 720, fps: int = 24) -> Path:
+    """Ҳаракатсиз расмдан оҳиста зум (Ken Burns) билан клип ясайди.
+
+    Видео моделидаги ҳаракат хатолари (йўқдан одам, адашган буюм) бўлмайди: кадр қотган, фақат камера яқинлашади.
+    """
+    frames = max(1, int(round(duration * fps)))
+    # Силлиқ зум учун аввал 2 баравар катталаштирамиз, сўнг кесамиз
+    vf = (
+        f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
+        f"crop={width * 2}:{height * 2},"
+        f"zoompan=z='min(zoom+0.0008,1.12)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        f"d={frames}:s={width}x{height}:fps={fps},format=yuv420p"
+    )
+    cmd = [
+        "ffmpeg", "-y", "-loop", "1", "-i", str(image), "-vf", vf,
+        "-t", f"{duration:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20", str(out_path),
+    ]
+    res = subprocess.run(cmd, capture_output=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"Ken Burns хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
+    return out_path
