@@ -244,7 +244,7 @@ def cmd_daily(args) -> None:
         for ahead in range(n + 1, n + 1 + args.ahead):
             if any(e.number == ahead for e in serial.plan.episodes) and not serial.is_ready(ahead):
                 produce_episode(serial, ahead, preview=True)
-    except Exception as exc:  # админни огоҳлантириш
+    except (Exception, SystemExit) as exc:  # админни огоҳлантириш (тил назорати SystemExit ташлайди)
         logger.exception("Кундалик иш хатоси (%s-қисм)", n)
         if os.environ.get("TELEGRAM_BOT_TOKEN"):
             tg.send_text(f"⚠️ Сериал хатоси ({n}-қисм): {exc}"[:3000])
