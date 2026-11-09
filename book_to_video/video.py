@@ -132,7 +132,9 @@ def generate_clip(
     """
     provider = os.environ.get("VIDEO_PROVIDER", "grok").lower()
     if provider == "grok":
-        return _grok_generate(prompt, out_path, duration, aspect_ratio, timeout_s)
+        return _grok_generate(prompt, out_path, duration, aspect_ratio, timeout_s, poll_every_s)
+    if provider != "kling":
+        raise ValueError(f"Номаълум VIDEO_PROVIDER: {provider} (grok ёки kling бўлиши керак)")
 
     model = os.environ.get("FAL_MODEL", DEFAULT_FAL_MODEL)
     payload = {
@@ -169,11 +171,13 @@ def generate_clip(
         raise RuntimeError(f"Жавобда видео ҳаволаси йўқ: {result}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_suffix(".part")
     with requests.get(video_url, stream=True, timeout=300) as r:
         r.raise_for_status()
-        with open(out_path, "wb") as f:
+        with open(tmp_path, "wb") as f:
             for part in r.iter_content(chunk_size=1 << 20):
                 f.write(part)
+    tmp_path.replace(out_path)
     return out_path
 
 
@@ -187,7 +191,10 @@ def concat_clips(clips: list[Path], out_path: Path) -> Path:
 
     # Клиплар бир моделдан бўлгани учун одатда тез нусхалаш (-c copy) етарли
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out_path)]
-    if subprocess.run(cmd, capture_output=True).returncode != 0:
+    first = subprocess.run(cmd, capture_output=True)
+    if first.returncode != 0:
+        # Биринчи уриниш нега йиқилганини логлаймиз, акс ҳолда сабаб йўқолади
+        logger.warning("FFmpeg -c copy муваффақиятсиз: %s", first.stderr.decode("utf-8", "ignore")[-500:])
         # Формат фарқ қилса — қайта кодлаш
         cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out_path)]
