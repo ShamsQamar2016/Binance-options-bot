@@ -9,7 +9,12 @@ from pathlib import Path
 
 from dubbing import audio_duration, cyr_to_lat, synthesize
 from series_planner import EpisodeScript, SeriesPlan
-from video import generate_clip
+import os as _os
+
+from video import generate_clip, generate_image, still_to_clip
+
+# still — расм + оҳиста зум (А вариант, стандарт); video — Grok видео (Б вариант)
+VISUAL_MODE = _os.environ.get("VISUAL_MODE", "still").lower()
 
 FPS = 24
 LINE_GAP = 0.35      # репликалар орасидаги пауза (сония)
@@ -114,8 +119,23 @@ class EpisodeBuilder:
                 + (f"Characters: {looks}\n" if looks else "")
                 + f"Style: {self.plan.visual_style}. Photorealistic, natural human motion, no text on screen."
             )
-            print(f"    🎥 кадр {shot.number}: {shot.description}")
-            generate_clip(prompt, clip, duration=shot.duration_seconds, aspect_ratio=self.aspect)
+            if VISUAL_MODE == "still":
+                # А режими: ҳаракатсиз расм + оҳиста зум — персонаж ва буюмлар адашмайди
+                still_prompt = (
+                    f"{shot.description}. {shot.video_prompt}. "
+                    f"Setting: {self.plan.era_and_setting}. "
+                    + (f"Characters: {looks}. " if looks else "")
+                    + f"Style: {self.plan.visual_style}. Photorealistic cinematic still frame, "
+                      "natural lighting, no text, no captions, no watermark."
+                )
+                image = self.dir / "clips" / f"shot_{shot.number:02d}.jpg"
+                print(f"    🖼  кадр {shot.number}: {shot.description}")
+                if not image.exists():
+                    generate_image(still_prompt, image, aspect_ratio=self.aspect)
+                still_to_clip(image, clip, duration=shot.duration_seconds, width=self.w, height=self.h)
+            else:
+                print(f"    🎥 кадр {shot.number}: {shot.description}")
+                generate_clip(prompt, clip, duration=shot.duration_seconds, aspect_ratio=self.aspect)
 
         length = max(audio_duration(clip), self._speech_length(voiced))
         audio = self.dir / "audio" / f"shot_{shot.number:02d}_mix.m4a"

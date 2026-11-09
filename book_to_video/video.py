@@ -257,3 +257,38 @@ def still_to_clip(image: Path, out_path: Path, duration: float, width: int = 128
     if res.returncode != 0:
         raise RuntimeError(f"Ken Burns хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
     return out_path
+
+
+def generate_image(prompt: str, out_path: Path, aspect_ratio: str = "16:9", timeout_s: int = 180) -> Path:
+    """Grok Imagine расм генерацияси (синхрон). Ҳужжат: docs.x.ai/developers/model-capabilities/images/generation"""
+    key = os.environ.get("XAI_API_KEY")
+    if not key:
+        raise RuntimeError("XAI_API_KEY ўрнатилмаган (.env файлига қўшинг)")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {
+        "model": os.environ.get("IMAGE_MODEL", "grok-imagine-image-2.0"),
+        "prompt": prompt,
+        "aspect_ratio": aspect_ratio,
+        "resolution": os.environ.get("IMAGE_RESOLUTION", "1k"),
+        "quality": os.environ.get("IMAGE_QUALITY", "low"),
+    }
+    resp = _retry(
+        lambda: requests.post(f"{XAI_BASE_URL}/images/generations", json=payload, headers=headers, timeout=timeout_s),
+        "Grok расм генерация",
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    image_url = (data.get("data") or [{}])[0].get("url")
+    if not image_url:
+        raise RuntimeError(f"Жавобда расм ҳаволаси йўқ: {data}")
+    logger.info("Расм тайёр (%s)", payload["model"])
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_suffix(".part")
+    with requests.get(image_url, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(tmp_path, "wb") as f:
+            for part in r.iter_content(chunk_size=1 << 20):
+                f.write(part)
+    tmp_path.replace(out_path)
+    return out_path
