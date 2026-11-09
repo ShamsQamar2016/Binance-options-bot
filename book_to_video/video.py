@@ -40,6 +40,11 @@ FAL_QUEUE_URL = "https://queue.fal.run"
 DEFAULT_FAL_MODEL = "fal-ai/kling-video/v2.1/standard/text-to-video"
 
 
+def _kling_duration(duration: int) -> int:
+    """Kling фақат 5 ёки 10 секундни қабул қилади."""
+    return 10 if int(duration) >= 8 else 5
+
+
 def _headers() -> dict[str, str]:
     key = os.environ.get("FAL_KEY")
     if not key:
@@ -139,13 +144,16 @@ def generate_clip(
     model = os.environ.get("FAL_MODEL", DEFAULT_FAL_MODEL)
     payload = {
         "prompt": prompt,
-        "duration": str(duration),
+        "duration": str(_kling_duration(duration)),
         "aspect_ratio": aspect_ratio,
         "negative_prompt": "text, subtitles, watermark, logo, blurry, distorted faces",
     }
 
     # 1) Навбатга қўйиш
-    resp = requests.post(f"{FAL_QUEUE_URL}/{model}", json=payload, headers=_headers(), timeout=60)
+    resp = _retry(
+        lambda: requests.post(f"{FAL_QUEUE_URL}/{model}", json=payload, headers=_headers(), timeout=60),
+        "Kling сўров юбориш",
+    )
     resp.raise_for_status()
     job = resp.json()
     status_url = job["status_url"]
@@ -154,7 +162,10 @@ def generate_clip(
     # 2) Тайёр бўлишини кутиш
     deadline = time.time() + timeout_s
     while True:
-        status = requests.get(status_url, headers=_headers(), timeout=60).json()
+        status = _retry(
+            lambda: requests.get(status_url, headers=_headers(), timeout=60),
+            "Kling статус",
+        ).json()
         state = status.get("status")
         if state == "COMPLETED":
             break
@@ -187,7 +198,12 @@ def concat_clips(clips: list[Path], out_path: Path) -> Path:
         raise RuntimeError("ffmpeg топилмади. Ўрнатинг: https://ffmpeg.org/download.html")
 
     list_file = out_path.with_suffix(".txt")
-    list_file.write_text("".join(f"file '{c.resolve().as_posix()}'\n" for c in clips), encoding="utf-8")
+    # ffmpeg concat рўйхатида апострофни '\'' кўринишда экранлаш керак
+    lines = []
+    for c in clips:
+        safe = c.resolve().as_posix().replace("'", "'\\''")
+        lines.append(f"file '{safe}'\n")
+    list_file.write_text("".join(lines), encoding="utf-8")
 
     # Клиплар бир моделдан бўлгани учун одатда тез нусхалаш (-c copy) етарли
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out_path)]
