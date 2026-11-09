@@ -51,6 +51,12 @@ def cyr_to_lat(text: str) -> str:
 # ----------------------------- Овозларни тайинлаш -----------------------------
 
 _AZURE_VOICES = {"male": "uz-UZ-SardorNeural", "female": "uz-UZ-MadinaNeural"}
+_AZURE_RU = {"male": "ru-RU-DmitryNeural", "female": "ru-RU-SvetlanaNeural"}
+
+
+def _is_ru() -> bool:
+    """DUB_LANGUAGE=ru (стандарт): диалог русча. uz бўлса — ўзбекча (кирилл → лотин)."""
+    return os.environ.get("DUB_LANGUAGE", "ru").lower() == "ru"
 _AGE_PROSODY = {  # Azure да икки овоздан турли персонажлар ясаш
     "child": {"pitch": "+18%", "rate": "+8%"},
     "young": {"pitch": "+5%", "rate": "+3%"},
@@ -109,9 +115,13 @@ def _azure(text: str, voice: dict, emotion: str, out: Path) -> None:
     pitch = int(voice["azure_pitch"].rstrip("%")) + dp
     rate = int(voice["azure_rate"].rstrip("%")) + dr
     volume = ' volume="-30%"' if emotion == "whisper" else ""
+    if _is_ru():
+        lang_code, voice_name, spoken = "ru-RU", _AZURE_RU[voice.get("gender", "male")], text
+    else:
+        lang_code, voice_name, spoken = "uz-UZ", voice["azure_voice"], cyr_to_lat(text)
     ssml = (
-        f'<speak version="1.0" xml:lang="uz-UZ"><voice name="{voice["azure_voice"]}">'
-        f'<prosody pitch="{pitch:+d}%" rate="{rate:+d}%"{volume}>{escape(cyr_to_lat(text))}</prosody>'
+        f'<speak version="1.0" xml:lang="{lang_code}"><voice name="{voice_name}">'
+        f'<prosody pitch="{pitch:+d}%" rate="{rate:+d}%"{volume}>{escape(spoken)}</prosody>'
         f"</voice></speak>"
     )
     r = requests.post(
@@ -137,7 +147,7 @@ def _elevenlabs(text: str, voice: dict, emotion: str, out: Path) -> None:
     if not voice_id:
         raise RuntimeError(f"voices.json да «{voice['name']}» учун elevenlabs_voice_id кўрсатилмаган")
     model = os.environ.get("ELEVENLABS_MODEL", "eleven_v3")
-    spoken = cyr_to_lat(text)
+    spoken = text if _is_ru() else cyr_to_lat(text)
     if "v3" in model and emotion not in ("", "calm"):
         spoken = f"[{emotion}] {spoken}"  # v3 моделида эмоция теглари
     r = requests.post(

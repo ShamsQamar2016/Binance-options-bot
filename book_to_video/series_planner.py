@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import os
+
 import anthropic
 from pydantic import BaseModel, Field
 
@@ -107,7 +109,7 @@ EPISODE_SYSTEM = """Сен ўзбек телесериалининг сцена�
 сериалнинг битта қисми учун кадрма-кадр сценарий ёзасан.
 
 Диалоглар:
-- Реплика ўзбек тилида, КИРИЛЛ ёзувида, жонли оғзаки нутқ — китобдаги диалоглардан фойдалан,
+- {DIALOGUE_RULE}. Жонли оғзаки нутқ — китобдаги диалоглардан фойдалан,
   лекин экран учун қисқартир. Бир репликада 1-2 жумла.
 - Диктор (narrator) фақат зарур жойда, қисқа; асосий юкни персонажлар диалоги кўтарсин.
 - Ҳар кадрдаги репликалар шу кадр узунлигига сиғсин: ўзбекча нутқ тахминан секундига 12-14 ҳарф.
@@ -122,6 +124,16 @@ EPISODE_SYSTEM = """Сен ўзбек телесериалининг сцена�
   Ҳаракат оддий ва аниқ бўлсин (бир кадрда битта асосий ҳаракат). Экрандаги ёзув/субтитр сўрама.
 - Кадрлар орасида монтаж мантиқи бўлсин: умумий план → ўрта → детал → реакция.
 - Қисм cliffhanger билан тугасин."""
+
+
+def episode_system() -> str:
+    """Диалог тили DUB_LANGUAGE га боғлиқ: ru (стандарт) ёки uz. Исм ва жойлар ҳар doim ўзбекча."""
+    if os.environ.get("DUB_LANGUAGE", "ru").lower() == "ru":
+        rule = ("Реплика ва диктор матни (recap, next_episode_teaser) РУС тилида, кириллда, оғзаки нутқда. "
+                "Персонаж исмлари ва жой номлари ўзбекча қолсин (Раббим, Тошкент)")
+    else:
+        rule = "Реплика ўзбек тилида, КИРИЛЛ ёзувида"
+    return EPISODE_SYSTEM.replace("{DIALOGUE_RULE}", rule)
 
 
 # ----------------------------- Ёрдамчи функциялар -----------------------------
@@ -249,7 +261,7 @@ def write_episode(
 Шу қисм учун тахминан {target_shots} кадрли (жами ~{episode_minutes:g} дақиқа) сценарий ёз.
 speaker майдонида фақат юқоридаги персонаж id лари ёки 'narrator' ишлат."""
 
-    script: EpisodeScript = _structured(EPISODE_SYSTEM, prompt, EpisodeScript, effort="high")
+    script: EpisodeScript = _structured(episode_system(), prompt, EpisodeScript, effort="high")
     known = {c.id for c in plan.characters}
     for shot in script.shots:
         shot.duration_seconds = 10 if shot.duration_seconds >= 8 else 5
