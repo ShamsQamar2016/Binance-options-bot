@@ -1,171 +1,153 @@
-"""Ўзбекча дубляж (TTS): ҳар персонажга алоҳида овоз.
+"""Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз.
 
-Провайдерлар (.env даги TTS_PROVIDER):
-  azure       — Microsoft Azure: ўзбекча овозлар uz-UZ-SardorNeural (эркак) ва uz-UZ-MadinaNeural (аёл).
-                Персонажлар баланд-пастлиги (pitch) ва тезлиги (rate) билан фарқланади.
-  elevenlabs  — ElevenLabs: жуда кўп ва эмоционал овозлар. Ҳар персонажга voices.json да voice_id беринг.
-                Ўзбекча талаффузни аввал синаб кўринг.
+Овозлар (voices.json):
+  - Сериал режаси тузилгач, ҳар персонаж учун Voice Design (eleven_ttv_v3) тавсифидан янги овоз ясалади
+    ва ElevenLabs ҳисобингизга сақланади. voice_id лар voices.json да туради.
+  - Овоз ёқмаса: voices.json да шу персонажнинг voice_id сини ўчириб, `python serial.py voices` ни
+    қайта ишга туширинг ёки ElevenLabs кутубхонасидан ўзингиз танлаган voice_id ни ёзинг.
+
+Нутқ: eleven_v3 модели, рус тили, ҳиссиёт теглари ([whispers], [sighs], [angry] ...).
 """
 
 from __future__ import annotations
 
+import base64
 import json
+import logging
 import os
 import subprocess
+import time
 from pathlib import Path
-from xml.sax.saxutils import escape
 
 import requests
 
-# ----------------------------- Кирилл → лотин -----------------------------
+logger = logging.getLogger(__name__)
 
-_MAP = {
-    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "ё": "yo", "ж": "j", "з": "z", "и": "i",
-    "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s",
-    "т": "t", "у": "u", "ф": "f", "х": "x", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "'",
-    "ы": "i", "ь": "", "э": "e", "ю": "yu", "я": "ya", "ў": "o'", "қ": "q", "ғ": "g'", "ҳ": "h",
+API = "https://api.elevenlabs.io/v1"
+RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+SAMPLE_TEXT = {
+    "male": ("Знаешь, я долго молчал. Но сегодня скажу всё, как есть. Ты можешь мне не верить, "
+             "но я видел это своими глазами — и с тех пор не могу спать по ночам."),
+    "female": ("Послушай меня внимательно. Я не прошу многого — только правду. Если ты уйдёшь сейчас, "
+               "я пойму. Но если останешься, обещай, что больше никогда мне не солжёшь."),
 }
-_VOWELS = set("аеёиоуэюяўАЕЁИОУЭЮЯЎ")
+NARRATOR_SAMPLE = ("В тот год зима пришла раньше обычного. Никто в городе ещё не знал, что эта ночь "
+                   "изменит всё — и для тех, кто ждал перемен, и для тех, кто их боялся.")
 
 
-def cyr_to_lat(text: str) -> str:
-    """Ўзбек кирилл ёзувини лотинга ўгиради (TTS лотин ёзувини яхшироқ ўқийди)."""
-    out = []
-    for i, ch in enumerate(text):
-        low = ch.lower()
-        prev = text[i - 1] if i else " "
-        if low == "е":
-            lat = "ye" if (not prev.isalpha() or prev in _VOWELS or prev in "ъьЪЬ") else "e"
-        elif low in _MAP:
-            lat = _MAP[low]
+def _key() -> str:
+    key = os.environ.get("ELEVENLABS_API_KEY")
+    if not key:
+        raise RuntimeError("ELEVENLABS_API_KEY ўрнатилмаган (.env файлига қўшинг)")
+    return key
+
+
+def _post(path: str, payload: dict, params: dict | None = None, timeout: int = 300) -> requests.Response:
+    """ElevenLabs'га POST: вақтинчалик хатоларда (429/5xx, тармоқ) экспоненциал кутиб қайта уринади."""
+    for attempt in range(1, 6):
+        try:
+            r = requests.post(f"{API}{path}", params=params, json=payload,
+                              headers={"xi-api-key": _key()}, timeout=timeout)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            if attempt == 5:
+                raise
+            logger.warning("ElevenLabs %s: тармоқ хатоси (%s), қайта уриниш %d", path, exc, attempt)
         else:
-            out.append(ch)
-            continue
-        if ch != low and lat:  # бош ҳарф
-            nxt = text[i + 1] if i + 1 < len(text) else ""
-            lat = lat.upper() if (nxt.isupper() and len(lat) > 1) else lat[0].upper() + lat[1:]
-        out.append(lat)
-    return "".join(out)
+            if r.status_code not in RETRY_STATUSES or attempt == 5:
+                if r.status_code >= 400:
+                    raise RuntimeError(f"ElevenLabs {path} хатоси {r.status_code}: {r.text[:800]}")
+                return r
+            logger.warning("ElevenLabs %s: HTTP %s, қайта уриниш %d", path, r.status_code, attempt)
+        time.sleep(3 * 2 ** (attempt - 1))
+    raise RuntimeError("unreachable")
 
 
-# ----------------------------- Овозларни тайинлаш -----------------------------
+# ----------------------------- Овозларни яратиш -----------------------------
 
-_AZURE_VOICES = {"male": "uz-UZ-SardorNeural", "female": "uz-UZ-MadinaNeural"}
-_AZURE_RU = {"male": "ru-RU-DmitryNeural", "female": "ru-RU-SvetlanaNeural"}
+def design_voice(name: str, description: str, gender: str, preview_path: Path | None = None,
+                 sample: str | None = None) -> str:
+    """Тавсифдан янги овоз ясайди ва ElevenLabs ҳисобига сақлайди. voice_id ни қайтаради."""
+    text = sample or SAMPLE_TEXT.get(gender, SAMPLE_TEXT["male"])
+    data = _post("/text-to-voice/design", {
+        "voice_description": description[:1000],
+        "model_id": os.environ.get("ELEVENLABS_VOICE_DESIGN_MODEL", "eleven_ttv_v3"),
+        "text": text,
+    }).json()
+    previews = data.get("previews") or []
+    if not previews:
+        raise RuntimeError(f"Voice Design вариант қайтармади: {str(data)[:300]}")
+    best = previews[0]
+    if preview_path is not None and best.get("audio_base_64"):
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        preview_path.write_bytes(base64.b64decode(best["audio_base_64"]))
+    created = _post("/text-to-voice", {
+        "voice_name": name[:100],
+        "voice_description": description[:1000],
+        "generated_voice_id": best["generated_voice_id"],
+    }).json()
+    return created["voice_id"]
 
 
-def _is_ru() -> bool:
-    """DUB_LANGUAGE=ru (стандарт): диалог русча. uz бўлса — ўзбекча (кирилл → лотин)."""
-    return os.environ.get("DUB_LANGUAGE", "ru").lower() == "ru"
-_AGE_PROSODY = {  # Azure да икки овоздан турли персонажлар ясаш
-    "child": {"pitch": "+18%", "rate": "+8%"},
-    "young": {"pitch": "+5%", "rate": "+3%"},
-    "adult": {"pitch": "0%", "rate": "0%"},
-    "elderly": {"pitch": "-12%", "rate": "-12%"},
-}
+def build_voice_map(plan, path: Path, create: bool = False, previews_dir: Path | None = None) -> dict:
+    """voices.json ни тузади/янгилайди. create=True бўлса, voice_id йўқ персонажларга овоз яратади.
 
-
-def build_voice_map(plan, path: Path) -> dict:
-    """Персонажлар учун voices.json тузади (мавжуд бўлса — ўзгаришларингизни сақлайди)."""
+    Қўлда ёзилган voice_id ва созламалар сақланади.
+    """
     existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     voices: dict = {}
-    entries = [("narrator", "Диктор", plan.narrator_voice)] + [(c.id, c.name, c.voice) for c in plan.characters]
-
-    # Бир хил жинс ва ёшдаги персонажлар бир-биридан фарқлансин
-    seen: dict[tuple, int] = {}
-    for cid, name, v in entries:
-        gender = "female" if v.gender.lower().startswith("f") else "male"
-        age = v.age_group if v.age_group in _AGE_PROSODY else "adult"
-        n = seen.get((gender, age), 0)
-        seen[(gender, age)] = n + 1
-        prosody = dict(_AGE_PROSODY[age])
-        if n:  # кейингиларини бироз силжитамиз
-            shift = (-6 if n % 2 else 6) * ((n + 1) // 2)
-            prosody["pitch"] = f"{int(prosody['pitch'].rstrip('%')) + shift:+d}%"
-        voices[cid] = {
-            "name": name,
-            "gender": gender,
-            "age_group": age,
-            "tone": v.tone,
-            "azure_voice": _AZURE_VOICES[gender],
-            "azure_pitch": prosody["pitch"],
-            "azure_rate": prosody["rate"],
-            "elevenlabs_voice_id": os.environ.get(
-                "ELEVENLABS_NARRATOR_VOICE" if cid == "narrator" else
-                ("ELEVENLABS_FEMALE_VOICE" if gender == "female" else "ELEVENLABS_MALE_VOICE"), ""),
-        }
-        voices[cid].update(existing.get(cid, {}))  # қўлда киритилганлар устун
-    path.write_text(json.dumps(voices, ensure_ascii=False, indent=2), encoding="utf-8")
+    entries = [("narrator", "Рассказчик", plan.narrator_voice)] + [(c.id, c.name, c.voice) for c in plan.characters]
+    for cid, name, spec in entries:
+        entry = {"name": name, "gender": spec.gender, "age": spec.age,
+                 "description": spec.description, "voice_id": ""}
+        entry.update(existing.get(cid, {}))
+        if create and not entry.get("voice_id"):
+            print(f"🎙  Овоз яратилмоқда: {name}")
+            sample = NARRATOR_SAMPLE if cid == "narrator" else None
+            preview = previews_dir / f"{cid}.mp3" if previews_dir else None
+            entry["voice_id"] = design_voice(f"{plan.series_title[:40]} — {name}", spec.description,
+                                             spec.gender, preview, sample)
+        voices[cid] = entry
+        path.write_text(json.dumps(voices | {k: v for k, v in existing.items() if k not in voices},
+                                   ensure_ascii=False, indent=2), encoding="utf-8")
     return voices
 
 
-# ----------------------------- TTS провайдерлари -----------------------------
+# ----------------------------- Нутқ -----------------------------
 
-_AZURE_STYLE = {  # Azure ўзбек овозлари style ни қўллаб-қувватламаслиги мумкин — тезлик/баландлик орқали
-    "sad": (-4, -8), "tired": (-6, -12), "whisper": (-2, -10), "tender": (0, -6), "crying": (-6, -10),
-    "angry": (4, 8), "excited": (6, 10), "joyful": (5, 6), "fearful": (6, 6), "calm": (0, -3),
-}
-
-
-def _azure(text: str, voice: dict, emotion: str, out: Path) -> None:
-    key, region = os.environ.get("AZURE_SPEECH_KEY"), os.environ.get("AZURE_SPEECH_REGION")
-    if not key or not region:
-        raise RuntimeError("AZURE_SPEECH_KEY ва AZURE_SPEECH_REGION ўрнатилмаган")
-    dp, dr = _AZURE_STYLE.get(emotion, (0, 0))
-    pitch = int(voice["azure_pitch"].rstrip("%")) + dp
-    rate = int(voice["azure_rate"].rstrip("%")) + dr
-    volume = ' volume="-30%"' if emotion == "whisper" else ""
-    if _is_ru():
-        lang_code, voice_name, spoken = "ru-RU", _AZURE_RU[voice.get("gender", "male")], text
-    else:
-        lang_code, voice_name, spoken = "uz-UZ", voice["azure_voice"], cyr_to_lat(text)
-    ssml = (
-        f'<speak version="1.0" xml:lang="{lang_code}"><voice name="{voice_name}">'
-        f'<prosody pitch="{pitch:+d}%" rate="{rate:+d}%"{volume}>{escape(spoken)}</prosody>'
-        f"</voice></speak>"
-    )
-    r = requests.post(
-        f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1",
-        headers={
-            "Ocp-Apim-Subscription-Key": key,
-            "Content-Type": "application/ssml+xml",
-            "X-Microsoft-OutputFormat": "audio-48khz-192kbitrate-mono-mp3",
-            "User-Agent": "book-to-serial",
-        },
-        data=ssml.encode("utf-8"),
-        timeout=120,
-    )
-    r.raise_for_status()
-    out.write_bytes(r.content)
+def _tagged_text(text: str, delivery: str) -> str:
+    tags = [t.strip().strip("[]") for t in (delivery or "").split(",") if t.strip()]
+    tags = [t for t in tags if t.lower() not in ("neutral", "calm", "normal")][:2]
+    return "".join(f"[{t}] " for t in tags) + text
 
 
-def _elevenlabs(text: str, voice: dict, emotion: str, out: Path) -> None:
-    key = os.environ.get("ELEVENLABS_API_KEY")
-    if not key:
-        raise RuntimeError("ELEVENLABS_API_KEY ўрнатилмаган")
-    voice_id = voice.get("elevenlabs_voice_id")
+def synthesize(text: str, voice: dict, delivery: str, out: Path) -> Path:
+    """Битта репликани русча овозлаштиради (mp3)."""
+    voice_id = voice.get("voice_id")
     if not voice_id:
-        raise RuntimeError(f"voices.json да «{voice['name']}» учун elevenlabs_voice_id кўрсатилмаган")
+        raise RuntimeError(f"voices.json да «{voice.get('name')}» учун voice_id йўқ: python serial.py voices")
     model = os.environ.get("ELEVENLABS_MODEL", "eleven_v3")
-    spoken = text if _is_ru() else cyr_to_lat(text)
-    if "v3" in model and emotion not in ("", "calm"):
-        spoken = f"[{emotion}] {spoken}"  # v3 моделида эмоция теглари
-    r = requests.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-        params={"output_format": "mp3_44100_128"},
-        headers={"xi-api-key": key, "Content-Type": "application/json"},
-        json={"text": spoken, "model_id": model,
-              "voice_settings": {"stability": 0.45, "similarity_boost": 0.8, "style": 0.35}},
-        timeout=180,
-    )
-    r.raise_for_status()
-    out.write_bytes(r.content)
-
-
-def synthesize(text: str, voice: dict, emotion: str, out: Path) -> Path:
-    provider = os.environ.get("TTS_PROVIDER", "azure").lower()
+    payload = {
+        "text": _tagged_text(text, delivery) if "v3" in model else text,
+        "model_id": model,
+        "voice_settings": {"stability": float(voice.get("stability", 0.5)),
+                           "similarity_boost": float(voice.get("similarity_boost", 0.75))},
+    }
+    lang = os.environ.get("ELEVENLABS_LANGUAGE_CODE", "ru")
+    params = {"output_format": os.environ.get("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")}
     out.parent.mkdir(parents=True, exist_ok=True)
-    {"azure": _azure, "elevenlabs": _elevenlabs}[provider](text, voice, emotion, out)
+    try:
+        r = _post(f"/text-to-speech/{voice_id}", payload | ({"language_code": lang} if lang else {}), params)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if lang and (" 400" in msg or "language" in msg.lower()):
+            # Баъзи моделлар language_code ни қабул қилмайди — усиз қайта уринамиз
+            r = _post(f"/text-to-speech/{voice_id}", payload, params)
+        else:
+            raise
+    tmp = out.with_suffix(".part")
+    tmp.write_bytes(r.content)
+    tmp.replace(out)
     return out
 
 

@@ -226,13 +226,25 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
     if video.stat().st_size <= max_mb * 1024 * 1024:
         return video
     out = video.with_name(video.stem + "_tg.mp4")
-    res = subprocess.run(
-        ["ffmpeg", "-y", "-i", str(video), "-vf", "scale=-2:720", "-c:v", "libx264",
-         "-crf", "28", "-preset", "veryfast", "-c:a", "aac", "-b:a", "96k", str(out)],
-        capture_output=True,
-    )
-    if res.returncode != 0:
-        raise RuntimeError(f"FFmpeg сиқиш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
+    # Қисқа томони 720 px бўлади (вертикал видео 720×1280, горизонтал 1280×720)
+    scale = "scale='if(gt(iw,ih),-2,720)':'if(gt(iw,ih),720,-2)'"
+    rate = ["-crf", "26"]
+    for _ in range(2):
+        res = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video), "-vf", scale, "-c:v", "libx264", *rate, "-preset", "medium",
+             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)],
+            capture_output=True,
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"FFmpeg сиқиш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
+        if out.stat().st_size <= max_mb * 1024 * 1024:
+            break
+        # Ҳали ҳам катта — узунликка қараб битрейтни ҳисоблаймиз
+        seconds = float(subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
+            capture_output=True, text=True).stdout.strip() or 60)
+        kbps = int(max_mb * 8 * 1024 * 0.9 / seconds) - 128
+        rate = ["-b:v", f"{max(300, kbps)}k", "-maxrate", f"{max(300, kbps)}k", "-bufsize", f"{2 * max(300, kbps)}k"]
     return out
 
 

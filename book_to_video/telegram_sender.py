@@ -6,6 +6,7 @@ TELEGRAM_CHANNEL_ID — сериал чиқадиган канал (@kanal_nomi)
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -69,6 +70,51 @@ def send_document(path: Path, caption: str = "", chat_id: str | None = None) -> 
             _api("sendDocument"),
             data={"chat_id": chat_id or admin_chat(), "caption": caption[:1000]},
             files={"document": (path.name, f)},
+            timeout=300,
+        ))
+
+
+def send_photo(path: Path, caption: str = "", chat_id: str | None = None) -> None:
+    with open(path, "rb") as f:
+        _check(requests.post(
+            _api("sendPhoto"),
+            data={"chat_id": chat_id or admin_chat(), "caption": caption[:1000]},
+            files={"photo": (path.name, f)},
+            timeout=300,
+        ))
+
+
+def send_album(items: list[tuple[Path, str]], chat_id: str | None = None) -> None:
+    """Расмларни 10 тадан альбом қилиб юборади: items = [(файл, изоҳ)]."""
+    for start in range(0, len(items), 10):
+        batch = items[start:start + 10]
+        if len(batch) == 1:
+            send_photo(batch[0][0], batch[0][1], chat_id)
+            continue
+        media, files, handles = [], {}, []
+        try:
+            for i, (path, caption) in enumerate(batch):
+                name = f"photo{i}"
+                handles.append(open(path, "rb"))
+                files[name] = (path.name, handles[-1])
+                media.append({"type": "photo", "media": f"attach://{name}", "caption": caption[:1000]})
+            _check(requests.post(
+                _api("sendMediaGroup"),
+                data={"chat_id": chat_id or admin_chat(), "media": json.dumps(media, ensure_ascii=False)},
+                files=files,
+                timeout=600,
+            ))
+        finally:
+            for h in handles:
+                h.close()
+
+
+def send_audio(path: Path, caption: str = "", chat_id: str | None = None) -> None:
+    with open(path, "rb") as f:
+        _check(requests.post(
+            _api("sendAudio"),
+            data={"chat_id": chat_id or admin_chat(), "caption": caption[:1000]},
+            files={"audio": (path.name, f)},
             timeout=300,
         ))
 

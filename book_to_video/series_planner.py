@@ -1,14 +1,21 @@
-"""Claude: китобни сериалга айлантириш.
+"""Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи).
 
-1) plan_series   — бутун китобни ўқиб «сериал библияси» тузади: персонажлар (ташқи кўриниши,
-                   овози), давр ва жой, визуал услуб ва қисмлар рўйхати (ҳар қисм китобнинг
-                   қайси бўлакларини қамраши).
-2) write_episode — битта қисм учун кадрма-кадр сценарий ва ўзбекча диалоглар ёзади.
+1) plan_series   — бутун китобни ўқиб «сериал библияси»ни тузади: воқеа қаерда ва қачон бўлади,
+                   персонажлар (миллати, ташқи кўриниши, кийими, овози), жойлар, услуб ва қисмлар.
+2) write_episode — битта қисм учун кадрма-кадр сценарий: планлар, расм ва ҳаракат промптлари,
+                   русча репликалар, ким кадрда гапиради (лаб синхрони учун), товушлар.
+3) pick_best_image — бир нечта калит расмдан эталонларга энг мосини танлайди (Claude кўриб баҳолайди).
+
+Claude учун кўрсатмалар рус тилида: томошабин эшитадиган ва кўрадиган ҳамма нарса русча бўлади.
+Расм ва видео моделлари учун тавсифлар инглизча (улар инглизчада яхшироқ ишлайди).
 """
 
 from __future__ import annotations
 
-import os
+import base64
+import re
+from pathlib import Path
+from typing import Literal
 
 import anthropic
 from pydantic import BaseModel, Field
@@ -21,119 +28,209 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 SEGMENT_CHARS = 8_000            # китоб шу ўлчамдаги рақамланган бўлакларга бўлинади
 MAX_CHARS_SINGLE_REQUEST = 800_000
 
+SPEECH_CHARS_PER_SECOND = 14.5   # рус нутқи тахминан шунча белги/сония
+
 
 # ----------------------------- Маълумот тузилмалари -----------------------------
 
-class Voice(BaseModel):
-    gender: str = Field(description="male ёки female")
-    age_group: str = Field(description="child, young, adult, elderly")
-    tone: str = Field(description="Овоз хусусияти инглизча, мас. 'deep, tired, warm'")
+class VoiceSpec(BaseModel):
+    gender: Literal["male", "female"]
+    age: int = Field(description="Примерный возраст голоса в годах")
+    description: str = Field(
+        description=(
+            "По-английски, для генератора голосов (Voice Design): тембр, высота, темп, манера, характер. "
+            "Всегда носитель русского языка, актёр профессионального русского дубляжа. "
+            "Пример: 'Native Russian male voice actor, about 55, deep warm baritone, slow and measured, "
+            "slightly hoarse, calm authority, professional film dubbing quality'. 25-60 слов."
+        )
+    )
 
 
 class Character(BaseModel):
-    id: str = Field(description="Лотинча қисқа идентификатор, мас. 'rabbim', 'kimsan'")
-    name: str = Field(description="Исми (кириллда, китобдагидек)")
-    role: str = Field(description="Сюжетдаги ўрни (ўзбекча)")
+    id: str = Field(description="Короткий латинский идентификатор: kenji, mary, old_tom")
+    name: str = Field(description="Имя по-русски, в принятой русской передаче (Кэндзи, Мэри)")
+    role: str = Field(description="Роль в сюжете, по-русски, одна фраза")
+    gender: Literal["male", "female"]
+    age: int
+    ethnicity: str = Field(description="По-английски: народ/этническая принадлежность, например 'Japanese', 'Irish-American'")
     appearance: str = Field(
         description=(
-            "Ташқи кўриниш ИНГЛИЗ тилида, видео модели учун жуда аниқ ва ўзгармас: ёши, бўйи, юзи, "
-            "сочи, мўйлови, кийими (давр ва миллий кийим аниқ), характерли белгилари. 40-70 сўз."
+            "По-английски, для генерации изображений, очень конкретно и неизменно: лицо, форма глаз, "
+            "кожа, волосы (цвет, длина, причёска), растительность на лице, телосложение, рост, приметы. "
+            "40-70 слов. Без одежды — она в costume."
         )
     )
-    voice: Voice
+    costume: str = Field(description="По-английски: основная одежда, исторически точная для эпохи, страны и сословия. 20-40 слов")
+    voice: VoiceSpec
+
+
+class Location(BaseModel):
+    id: str = Field(description="Короткий латинский идентификатор: tea_house, ship_deck")
+    name: str = Field(description="Название по-русски")
+    description: str = Field(
+        description="По-английски, для генерации изображений: архитектура, материалы, предметы, эпоха, свет. 30-60 слов"
+    )
+    interior: bool
+    ambience: str = Field(
+        description=(
+            "По-английски: фоновый звук этого места для генератора звуков, без музыки и речи. "
+            "Пример: 'quiet 1930s Tokyo side street at dusk, distant tram bell, wooden sandals on stone, light wind'"
+        )
+    )
 
 
 class EpisodePlan(BaseModel):
     number: int
-    title: str = Field(description="Қисм номи (ўзбекча, кириллда)")
-    segment_start: int = Field(description="Китобнинг биринчи бўлаги рақами")
-    segment_end: int = Field(description="Охирги бўлаги рақами (ўзи ҳам киради)")
-    summary: str = Field(description="Бу қисмда нима бўлади (ўзбекча, 2-4 жумла)")
-    cliffhanger: str = Field(description="Қисм қандай савол/кескинлик билан тугайди — томошабин эртангисини кутиши учун")
+    title: str = Field(description="Название серии по-русски")
+    segment_start: int = Field(description="Номер первого сегмента книги")
+    segment_end: int = Field(description="Номер последнего сегмента (включительно)")
+    summary: str = Field(description="Что происходит в серии, по-русски, 2-4 предложения")
+    cliffhanger: str = Field(description="Каким вопросом/напряжением заканчивается серия, по-русски")
 
 
 class SeriesPlan(BaseModel):
-    series_title: str = Field(description="Сериал номи (кириллда)")
-    logline: str
-    era_and_setting: str = Field(description="Давр, жой, муҳит — ИНГЛИЗЧА, видео промптлари учун (мас. '1940s Uzbek village near Tashkent...')")
-    visual_style: str = Field(description="Барча кадрлар учун умумий кино услуби ИНГЛИЗЧА (камера, плёнка, ранг, ёруғлик)")
-    narrator_voice: Voice
+    series_title: str = Field(description="Название сериала по-русски")
+    original_title: str = Field(description="Название книги так, как оно указано в книге")
+    author: str
+    logline: str = Field(description="Главная идея в одном предложении, по-русски")
+    country: str = Field(description="По-английски: страна/регион, где происходит действие (не страна автора)")
+    era: str = Field(description="По-английски: эпоха и годы действия, например 'Tokyo, Japan, 1932-1934'")
+    setting: str = Field(description="По-английски: общий мир фильма для промптов — быт, архитектура, природа, социальная среда. 40-80 слов")
+    visual_style: str = Field(
+        description=(
+            "По-английски: единый кинематографический стиль всех кадров — камера, оптика, плёнка, палитра, свет. "
+            "Реалистичное живое кино, не мультфильм."
+        )
+    )
+    music_style: str = Field(description="По-английски: стиль музыки (инструменты, характер), подходящий стране, эпохе и жанру")
+    narrator_voice: VoiceSpec
     characters: list[Character]
+    locations: list[Location]
     episodes: list[EpisodePlan]
 
 
 class Line(BaseModel):
-    speaker: str = Field(description="Персонаж id си ёки 'narrator'")
-    text: str = Field(description="Ўзбекча реплика КИРИЛЛ ёзувида, табиий оғзаки нутқ, 1-2 жумла")
-    emotion: str = Field(description="Инглизча бир сўз: calm, sad, angry, joyful, fearful, whisper, tender, tired, excited, crying")
+    speaker: str = Field(description="id персонажа или 'narrator'")
+    text: str = Field(description="Реплика по-русски, живая разговорная речь, 1-2 коротких предложения")
+    delivery: str = Field(
+        description=(
+            "Короткие английские теги подачи для синтеза речи через запятую: whispers, sighs, angry, "
+            "laughs softly, trembling voice, tired, excited, crying, sarcastic, shouting. '' — нейтрально"
+        )
+    )
+
+
+ShotType = Literal[
+    "establishing", "wide", "medium", "medium_close_up", "close_up",
+    "extreme_close_up", "over_the_shoulder", "insert",
+]
 
 
 class Shot(BaseModel):
     number: int
-    description: str = Field(description="Кадрда нима бўлаётгани (ўзбекча, 1 жумла)")
-    characters_in_shot: list[str] = Field(description="Кадрда кўринадиган персонажлар id лари")
-    video_prompt: str = Field(
+    location_id: str = Field(description="id локации из библии сериала")
+    shot_type: ShotType
+    characters_in_shot: list[str] = Field(description="id персонажей, которые видны в кадре")
+    speaker_on_screen: str = Field(
         description=(
-            "Видео модели учун ИНГЛИЗЧА промпт: ҳаракат, камера бурчаги ва ҳаракати, ёруғлик, муҳит, "
-            "кайфият. Персонажларни исми билан эмас, ташқи кўриниши билан қисқача эсла."
+            "id персонажа, чьё лицо видно в кадре и кто говорит в этом кадре (для липсинка). "
+            "'' — если лица говорящего не видно или в кадре никто не говорит"
         )
     )
-    duration_seconds: int = Field(description="5 ёки 10. Кадрдаги репликалар шу вақтга сиғсин")
-    lines: list[Line] = Field(description="Шу кадр давомида айтиладиган репликалар (бўш бўлиши мумкин)")
+    description: str = Field(description="Что происходит в кадре, по-русски, одно предложение")
+    image_prompt: str = Field(
+        description=(
+            "По-английски: композиция первого кадра — кто где, поза, выражение лица, план, объектив, свет, "
+            "время суток. Персонажей называй только как [id], например [kenji]. Вертикальный кадр 9:16; "
+            "главное — в центре, нижняя треть без важных деталей (там субтитры)."
+        )
+    )
+    motion_prompt: str = Field(
+        description=(
+            "По-английски: одно ясное естественное действие в кадре + движение камеры "
+            "(static, slow push-in, slow pull-back, handheld, pan left/right, tilt up). Персонажи как [id]."
+        )
+    )
+    sound: str = Field(
+        description="По-английски: шумы и эффекты этого кадра (footsteps on gravel, door creaks), без музыки и речи. '' если нет"
+    )
+    duration_seconds: int = Field(description="Желаемая длительность кадра, от 3 до 8 секунд")
+    lines: list[Line] = Field(description="Реплики в этом кадре (может быть пусто)")
 
 
 class EpisodeScript(BaseModel):
     number: int
-    title: str
-    recap: str = Field(description="'Олдинги қисмда...' — диктор учун 1-2 жумла (1-қисмда — сериалга қисқа кириш)")
+    title: str = Field(description="Название серии по-русски")
+    recap: str = Field(description="Одно короткое предложение по-русски: что было раньше (для подписи к посту). В 1-й серии — о чём сериал")
     shots: list[Shot]
-    next_episode_teaser: str = Field(description="Охирида диктор айтадиган қизиқтирувчи 1 жумла, кейинги қисмни очмасдан")
+    music_prompt: str = Field(
+        description=(
+            "По-английски: музыка для этой серии для генератора музыки — настроение и его развитие от начала "
+            "к концу, инструменты, темп. Только инструментал, без вокала"
+        )
+    )
+    next_episode_teaser: str = Field(description="Одна интригующая фраза диктора по-русски в конце серии, не раскрывая следующую")
+
+
+class ImageVerdict(BaseModel):
+    best_index: int = Field(description="Номер лучшего варианта (с 1)")
+    problems: list[str] = Field(description="Коротко по-русски: недостатки выбранного варианта ([] если нет)")
 
 
 # ----------------------------- Промптлар -----------------------------
 
-PLAN_SYSTEM = """Сен ўзбек кино ва телесериалларининг тажрибали сценаристи ва шоураннерисан.
-Вазифанг — китобни ҳар куни битта қисм чиқадиган қисқа AI-сериалга мослаштириш.
+PLAN_SYSTEM = """Ты — опытный шоураннер и сценарист. Ты адаптируешь книги в короткие вертикальные \
+сериалы (YouTube Shorts, Instagram Reels) с профессиональным русским дубляжом. Серия выходит каждый день.
 
-Қоидалар:
-- Китобнинг сюжети, руҳи ва персонажларига содиқ қол; ўзингдан воқеа қўшма.
-- Китоб <segment id="N"> бўлакларига бўлинган. Ҳар қисм кетма-кет бўлаклар оралиғини қамрасин;
-  қисмлар бутун китобни бошидан охиригача, бўлакларни ташлаб кетмасдан қопласин.
-- Ҳар қисм ўзича тугалланган кичик воқеа бўлсин ва кескин лаҳзада (cliffhanger) тугасин —
-  томошабин эртанги қисмни кутсин.
-- Персонажлар ташқи кўриниши (appearance) жуда аниқ ва ўзгармас бўлсин — улар ҳар куни бир хил кўриниши керак.
-  Давр ва миллий кийимларни тарихий аниқ тасвирла.
-- Кадрлар табиий, ҳаётий, реалистик кино каби бўлсин; мультфильм ёки фантастика услуби эмас."""
+Мир фильма берётся из книги:
+- Определи страну, регион и эпоху, где ПРОИСХОДИТ ДЕЙСТВИЕ (не страну автора). Внешность, этническая \
+принадлежность, костюмы, причёски, архитектура, интерьеры, быт, транспорт и природа — как в этой стране \
+и эпохе, исторически достоверно.
+- Персонажи выглядят как актёры соответствующего народа: японский роман — японские актёры, американский — \
+американские. Если книга описывает персонажа иначе (иностранец, другой народ) — следуй книге.
+- Тексты для генерации изображений (appearance, costume, setting, описания локаций, visual_style) пиши \
+по-английски, конкретно и неизменно: они повторяются в каждом кадре, чтобы персонаж выглядел одинаково \
+во всех сериях.
+- Реалистичное живое кино, как снятое с настоящими актёрами. Не мультфильм и не фэнтези-иллюстрация \
+(если сама книга не фантастика).
 
-EPISODE_SYSTEM = """Сен ўзбек телесериалининг сценаристи ва режиссёрисан. Китобдан берилган парча асосида
-сериалнинг битта қисми учун кадрма-кадр сценарий ёзасан.
+Язык: всё, что зритель видит и слышит (названия, имена, реплики, титры), — по-русски. Имена и топонимы — \
+в принятой русской передаче (японские — по системе Поливанова: Кэндзи, Сётаро; английские — практической \
+транскрипцией: Джон, Мэри).
 
-Диалоглар:
-- {DIALOGUE_RULE}. Жонли оғзаки нутқ — китобдаги диалоглардан фойдалан,
-  лекин экран учун қисқартир. Бир репликада 1-2 жумла.
-- Диктор (narrator) фақат зарур жойда, қисқа; асосий юкни персонажлар диалоги кўтарсин.
-- Ҳар кадрдаги репликалар шу кадр узунлигига сиғсин: ўзбекча нутқ тахминан секундига 12-14 ҳарф.
-  Кўп реплика бўлса — 10 сониялик кадр ёки бир нечта кадрга бўл.
+Структура:
+- Книга разбита на сегменты <segment id="N">. Каждая серия охватывает непрерывный диапазон сегментов; \
+серии покрывают книгу от начала до конца без пропусков.
+- Каждая серия — законченный маленький эпизод: цепляющее начало и клиффхэнгер в конце.
+- Будь верен сюжету, духу и персонажам книги; не выдумывай событий.
 
-Кадрлар (лаб синхронизацияси йўқлигини ҳисобга ол — бу жуда муҳим):
-- Видео модели лаб ҳаракатини овозга мослай олмайди. Шунинг учун гапираётган персонажни
-  яқиндан, юзи камерага қараган ҳолда кўрсатма. Ўрнига: елка орқасидан кадр, орқа/ён томондан,
-  узоқроқ умумий план, тингловчининг юзи (реакция), қўллар ёки буюмлар детали.
-  Профессионал дубляж қилинган киноларда шундай қилинади.
-- video_prompt инглизча, табиий, реалистик кино: 'cinematic, natural light, realistic, 35mm film'.
-  Ҳаракат оддий ва аниқ бўлсин (бир кадрда битта асосий ҳаракат). Экрандаги ёзув/субтитр сўрама.
-- Кадрлар орасида монтаж мантиқи бўлсин: умумий план → ўрта → детал → реакция.
-- Қисм cliffhanger билан тугасин."""
+Голоса: голоса персонажей должны заметно отличаться друг от друга (возраст, тембр, темп, манера)."""
 
+EPISODE_SYSTEM = """Ты — сценарист и режиссёр вертикального сериала (кадр 9:16, смотрят на телефоне) \
+с профессиональным русским дубляжом. По отрывку книги пиши покадровый сценарий одной серии.
 
-def episode_system() -> str:
-    """Диалог тили DUB_LANGUAGE га боғлиқ: ru (стандарт) ёки uz. Исм ва жойлар ҳар doim ўзбекча."""
-    if os.environ.get("DUB_LANGUAGE", "ru").lower() == "ru":
-        rule = ("Реплика ва диктор матни (recap, next_episode_teaser) РУС тилида, кириллда, оғзаки нутқда. "
-                "Персонаж исмлари ва жой номлари ўзбекча қолсин (Раббим, Тошкент)")
-    else:
-        rule = "Реплика ўзбек тилида, КИРИЛЛ ёзувида"
-    return EPISODE_SYSTEM.replace("{DIALOGUE_RULE}", rule)
+Диалоги:
+- Все реплики, текст рассказчика (narrator), recap и next_episode_teaser — по-русски, живой разговорной \
+речью, как в хорошем русском дубляже зарубежного кино.
+- Не копируй текст книги или её перевода дословно: пиши собственные реплики по событиям книги.
+- Реплика — 1-2 коротких предложения. Русская речь — примерно 14-15 знаков в секунду. Все реплики кадра \
+должны уложиться в его длительность: не больше ~7 секунд речи на кадр. Длинный разговор дели на несколько кадров.
+- Рассказчик — только там, где без него непонятно; основное несут диалоги и действие.
+
+Кадры:
+- Монтаж как в кино: новая локация — establishing или wide, затем средние планы, на эмоциях — крупные, \
+детали (insert) и реакции слушающих. Чередуй крупность и ракурсы, не повторяй один план подряд.
+- Для телефона предпочитай средние и крупные планы; общие — коротко, для ориентации.
+- Липсинк: если в кадре видно лицо говорящего — укажи его в speaker_on_screen. В таком кадре говорит только \
+он; реплики собеседника — в его собственном кадре (восьмёрка) или за кадром. Если говорящего не видно \
+(спина, за кадром) — speaker_on_screen = "".
+- В characters_in_shot — только те, кто действительно виден в кадре; максимум 3 персонажа.
+- image_prompt и motion_prompt — по-английски; персонажей называй только как [id] (внешность и костюм \
+подставятся автоматически). В motion_prompt — одно естественное действие и движение камеры. Не проси \
+надписей на экране.
+- sound — шумы этого кадра по-английски, без музыки и речи.
+- Первый кадр серии должен сразу цеплять: начинай с действия или сильного образа, а не с вступления.
+- Серия заканчивается клиффхэнгером."""
 
 
 # ----------------------------- Ёрдамчи функциялар -----------------------------
@@ -150,16 +247,17 @@ def _check(message) -> None:
         raise RuntimeError("Жавоб max_tokens чегарасига етиб кесилди.")
 
 
-def _structured(system: str, prompt: str, output_type, effort: str = "high"):
+def _structured(system: str, content, output_type, effort: str = "high", max_tokens: int = 64000):
+    """Claude'дан Pydantic схемасига мос жавоб олади. content — матн ёки контент блоклари рўйхати."""
     with _client().beta.messages.stream(
         model=MODEL,
-        max_tokens=64000,
+        max_tokens=max_tokens,
         betas=[FALLBACK_BETA],
         fallbacks="default",
         system=system,
         output_config={"effort": effort},
         output_format=output_type,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": content}],
     ) as stream:
         message = stream.get_final_message()
     _check(message)
@@ -169,7 +267,7 @@ def _structured(system: str, prompt: str, output_type, effort: str = "high"):
 def _text(prompt: str, effort: str = "medium") -> str:
     with _client().beta.messages.stream(
         model=MODEL,
-        max_tokens=16000,
+        max_tokens=32000,
         betas=[FALLBACK_BETA],
         fallbacks="default",
         output_config={"effort": effort},
@@ -188,6 +286,11 @@ def _tagged(segments: list[str], start: int = 1) -> str:
     return "\n".join(f'<segment id="{i}">\n{s}\n</segment>' for i, s in enumerate(segments, start))
 
 
+def speech_seconds(text: str) -> float:
+    """Репликанинг тахминий узунлиги (сония) — сценарийни текшириш учун."""
+    return len(re.sub(r"\s+", " ", text).strip()) / SPEECH_CHARS_PER_SECOND
+
+
 # ----------------------------- Асосий функциялар -----------------------------
 
 def plan_series(segments: list[str], episode_minutes: float, episodes: int | None = None, wishes: str = "") -> SeriesPlan:
@@ -196,33 +299,41 @@ def plan_series(segments: list[str], episode_minutes: float, episodes: int | Non
     if total_chars <= MAX_CHARS_SINGLE_REQUEST:
         book_block = f"<book segments=\"{len(segments)}\">\n{_tagged(segments)}\n</book>"
     else:
-        # Жуда катта китоб: бўлаклар гуруҳларининг мазмунини оламиз (бўлак рақамлари сақланади)
+        # Жуда катта китоб: бўлаклар гуруҳларининг батафсил мазмунини оламиз (бўлак рақамлари сақланади)
         group = MAX_CHARS_SINGLE_REQUEST // 3 // SEGMENT_CHARS
         parts = []
         for g in range(0, len(segments), group):
             print(f"  • Бўлаклар {g + 1}-{min(g + group, len(segments))} таҳлил қилинмоқда...")
             parts.append(_text(
-                "Китоб парчасини ўзбекча батафсил баён қил. Ҳар бўлак учун алоҳида "
-                "'[бўлак N]: ...' шаклида воқеалар, персонажлар (ташқи кўриниши билан), жойлар, "
-                f"муҳим диалогларни ёз.\n\n{_tagged(segments[g:g + group], g + 1)}"
+                "Подробно перескажи отрывок книги по-русски. Для каждого сегмента отдельно, в виде "
+                "'[сегмент N]: ...': события, персонажи (с внешностью, возрастом, одеждой), места, эпоха, "
+                f"важные диалоги.\n\n{_tagged(segments[g:g + group], g + 1)}"
             ))
         book_block = f"<book_summary segments=\"{len(segments)}\">\n" + "\n\n".join(parts) + "\n</book_summary>"
 
-    count = f"Қисмлар сони: {episodes}." if episodes else (
-        "Қисмлар сонини ўзинг танла — ҳар қисм китобнинг табиий бир воқеасини қамрасин."
+    count = f"Количество серий: {episodes}." if episodes else (
+        "Количество серий выбери сам — каждая серия охватывает одно естественное событие книги."
     )
     prompt = (
         f"{book_block}\n\n"
-        f"Шу китоб асосида кундалик сериал режасини туз. Ҳар қисм экранда тахминан {episode_minutes:g} дақиқа. "
-        f"{count} Бўлаклар 1 дан {len(segments)} гача.\n{wishes}"
+        f"Составь по этой книге план ежедневного вертикального сериала. Каждая серия на экране длится "
+        f"примерно {episode_minutes:g} мин. {count} Сегменты от 1 до {len(segments)}."
+        + (f"\nДополнительные пожелания: {wishes}" if wishes else "")
     )
-    plan: SeriesPlan = _structured(PLAN_SYSTEM, prompt, SeriesPlan, effort="high")
+    plan: SeriesPlan = _structured(PLAN_SYSTEM, prompt, SeriesPlan, effort="high", max_tokens=128000)
 
-    # Бўлак оралиқларини тўғрилаш
-    for ep in plan.episodes:
+    for ep in plan.episodes:  # бўлак оралиқларини тўғрилаш
         ep.segment_start = max(1, min(ep.segment_start, len(segments)))
         ep.segment_end = max(ep.segment_start, min(ep.segment_end, len(segments)))
+    for c in plan.characters:
+        c.id = _slug(c.id)
+    for loc in plan.locations:
+        loc.id = _slug(loc.id)
     return plan
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9_]+", "_", value.lower()).strip("_") or "x"
 
 
 def write_episode(
@@ -233,41 +344,95 @@ def write_episode(
     previous_summary: str = "",
 ) -> EpisodeScript:
     characters = "\n".join(
-        f"- id={c.id}; {c.name}; {c.role}; кўриниши: {c.appearance}" for c in plan.characters
+        f"- id={c.id}; {c.name}; {c.role}; {c.gender}, {c.age}; {c.ethnicity}" for c in plan.characters
     )
+    locations = "\n".join(f"- id={loc.id}; {loc.name}; {loc.description}" for loc in plan.locations)
     excerpt = _tagged(segments[episode.segment_start - 1: episode.segment_end], episode.segment_start)
-    target_shots = max(6, round(episode_minutes * 60 / 7))
+    seconds = episode_minutes * 60
+    target_shots = max(8, round(seconds / 5))
 
     prompt = f"""<series>
-Номи: {plan.series_title}
-Давр ва жой: {plan.era_and_setting}
-Визуал услуб: {plan.visual_style}
-Персонажлар:
+Название: {plan.series_title}
+Где и когда: {plan.country}; {plan.era}
+Мир: {plan.setting}
+Персонажи:
 {characters}
+Локации:
+{locations}
 </series>
 
-<previous_episode>{previous_summary or "Бу биринчи қисм."}</previous_episode>
+<previous_episode>{previous_summary or "Это первая серия."}</previous_episode>
 
 <episode_plan>
-{episode.number}-қисм: «{episode.title}»
-Мазмуни: {episode.summary}
-Якуни (cliffhanger): {episode.cliffhanger}
+Серия {episode.number}: «{episode.title}»
+Содержание: {episode.summary}
+Финал (клиффхэнгер): {episode.cliffhanger}
 </episode_plan>
 
 <book_excerpt>
 {excerpt}
 </book_excerpt>
 
-Шу қисм учун тахминан {target_shots} кадрли (жами ~{episode_minutes:g} дақиқа) сценарий ёз.
-speaker майдонида фақат юқоридаги персонаж id лари ёки 'narrator' ишлат."""
+Напиши сценарий этой серии: примерно {target_shots} кадров, всего около {seconds:.0f} секунд \
+(строго не больше {min(seconds + 20, 170):.0f} секунд). В speaker используй только id персонажей выше \
+или 'narrator'; в location_id — только id локаций выше."""
 
     script: EpisodeScript = _structured(episode_system(), prompt, EpisodeScript, effort="high")
+    return normalize_script(script, plan, episode.number)
+
+
+def episode_system() -> str:
+    return EPISODE_SYSTEM
+
+
+def normalize_script(script: EpisodeScript, plan: SeriesPlan, number: int) -> EpisodeScript:
+    """Claude жавобидаги номаълум id ларни тозалаш ва чегараларни тўғрилаш."""
     known = {c.id for c in plan.characters}
-    for shot in script.shots:
-        shot.duration_seconds = 10 if shot.duration_seconds >= 8 else 5
-        shot.characters_in_shot = [c for c in shot.characters_in_shot if c in known]
+    locations = {loc.id for loc in plan.locations}
+    first_location = plan.locations[0].id if plan.locations else ""
+    for i, shot in enumerate(script.shots, 1):
+        shot.number = i
+        shot.duration_seconds = max(3, min(8, int(shot.duration_seconds)))
+        shot.characters_in_shot = [c for c in dict.fromkeys(_slug(c) for c in shot.characters_in_shot) if c in known][:3]
+        if _slug(shot.location_id) in locations:
+            shot.location_id = _slug(shot.location_id)
+        else:
+            shot.location_id = script.shots[i - 2].location_id if i > 1 else first_location
+        speaker = _slug(shot.speaker_on_screen) if shot.speaker_on_screen else ""
+        speaks_here = {_slug(line.speaker) for line in shot.lines}
+        shot.speaker_on_screen = speaker if (speaker in known and speaker in shot.characters_in_shot
+                                             and speaker in speaks_here) else ""
         for line in shot.lines:
-            if line.speaker not in known:
-                line.speaker = "narrator"
-    script.number = episode.number
+            sp = _slug(line.speaker)
+            line.speaker = sp if sp in known else "narrator"
+    script.number = number
     return script
+
+
+def pick_best_image(candidates: list[Path], references: list[tuple[str, Path]], shot_text: str) -> ImageVerdict:
+    """Claude калит расм вариантларини эталонлар билан солиштириб, энг яхшисини танлайди.
+
+    candidates ва references — кичрайтирилган JPEG файллар (ҳар бири ~1 МБ дан кичик).
+    """
+    content: list[dict] = []
+    for label, path in references:
+        content.append({"type": "text", "text": f"Эталон: {label}"})
+        content.append(_image_block(path))
+    for i, path in enumerate(candidates, 1):
+        content.append({"type": "text", "text": f"Вариант {i}"})
+        content.append(_image_block(path))
+    content.append({"type": "text", "text": (
+        f"Задуманный кадр: {shot_text}\n\nВыбери лучший вариант для кадра фильма. Критерии по важности: "
+        "1) лица и костюмы совпадают с эталонами персонажей; 2) нет дефектов (лишние люди, искажённые руки "
+        "и лица, надписи); 3) кадр соответствует задумке; 4) реалистичность и красота композиции."
+    )})
+    return _structured(
+        "Ты — внимательный ассистент режиссёра по непрерывности (скрипт-супервайзер).",
+        content, ImageVerdict, effort="low", max_tokens=16000,
+    )
+
+
+def _image_block(path: Path) -> dict:
+    media = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+    data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+    return {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}

@@ -1,13 +1,19 @@
-"""Китобдан кундалик AI-сериал: ҳар куни бир қисм Telegram каналга.
+"""Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга.
+
+Персонажлар ва атмосфера китобдан олинади (япон китоби — японлар ва Япония, Америка китоби — американлар
+ва Америка), дубляж ва титрлар доим рус тилида. Формат: 9:16, 1080×1920 — YouTube Shorts, Instagram Reels.
 
 Буйруқлар:
-    python serial.py plan --book китоб.pdf --name ikki_eshik --minutes 2
-    python serial.py plan --url https://.../kitob.pdf --name ...
-    python serial.py plan --from-telegram --name ...      # ботга юборилган файлдан
-    python serial.py produce [--count 2] [--episode 3]    # қисм(лар) тайёрлаш, админга олдиндан кўрсатиш
-    python serial.py publish-next                         # навбатдаги тайёр қисмни каналга
-    python serial.py daily                                # ҳар куни cron/Task Scheduler орқали
+    python serial.py plan --book китоб.pdf --name my_serial      # 1. режа (персонажлар, жойлар, қисмлар)
+    python serial.py plan --from-telegram --name my_serial        #    ёки ботга юборилган файлдан
+    python serial.py refs                                         # 2. персонаж ва жой эталонлари → Telegram
+    python serial.py voices                                       # 3. ҳар персонажга русча овоз → Telegram
+    python serial.py storyboard                                   # 4. навбатдаги қисм раскадровкаси (арзон)
+    python serial.py produce [--count 2] [--episode 3]            # 5. қисм(лар)ни тайёрлаш → сизга кўрсатиш
+    python serial.py publish-next                                 #    навбатдаги тайёр қисмни каналга
+    python serial.py daily                                        #    ҳар куни (cron / Task Scheduler)
     python serial.py status
+    python serial.py check-models                                 #    fal.ai моделлари параметрларини кўриш
 """
 
 from __future__ import annotations
@@ -16,17 +22,20 @@ import argparse
 import json
 import logging
 import os
+import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 import telegram_sender as tg
 from book_sources import download_from_telegram, download_from_url, load_text
 from dubbing import build_voice_map
-from episode_builder import EpisodeBuilder
-from series_planner import EpisodeScript, SeriesPlan, make_segments, plan_series, write_episode
+from episode_builder import EpisodeBuilder, ensure_references
+from series_planner import EpisodeScript, SeriesPlan, make_segments, plan_series, speech_seconds, write_episode
 
 ROOT = Path("output/serials")
 LOG_FILE = Path("output/serial.log")
@@ -45,8 +54,13 @@ def setup_logging() -> None:
     file_handler.setFormatter(fmt)
     console = logging.StreamHandler()
     console.setFormatter(fmt)
+    console.setLevel(logging.WARNING)  # экранда фақат огоҳлантиришлар, батафсили — журналда
     root.addHandler(file_handler)
     root.addHandler(console)
+
+
+def telegram_on() -> bool:
+    return bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
 
 
 # ----------------------------- Ҳолат (state) -----------------------------
@@ -54,7 +68,15 @@ def setup_logging() -> None:
 class Serial:
     def __init__(self, folder: Path):
         self.dir = folder
-        self.plan = SeriesPlan.model_validate_json((folder / "plan.json").read_text(encoding="utf-8"))
+        if not (folder / "plan.json").exists():
+            raise SystemExit(f"Сериал топилмади: {folder} (аввал: python serial.py plan ...)")
+        try:
+            self.plan = SeriesPlan.model_validate_json((folder / "plan.json").read_text(encoding="utf-8"))
+        except ValidationError as exc:
+            raise SystemExit(
+                f"{folder / 'plan.json'} эски форматда ёки бузилган. Янги режа тузинг: "
+                f"python serial.py plan ... --name янги_ном\n{exc}"
+            )
         self.segments: list[str] = json.loads((folder / "segments.json").read_text(encoding="utf-8"))
         self.settings: dict = json.loads((folder / "settings.json").read_text(encoding="utf-8"))
         self.state_path = folder / "state.json"
@@ -76,8 +98,15 @@ class Serial:
                 return ep.number
         return None
 
-    def voices(self) -> dict:
-        return build_voice_map(self.plan, self.dir / "voices.json")
+    def voices(self, create: bool = True) -> dict:
+        return build_voice_map(self.plan, self.dir / "voices.json", create=create,
+                               previews_dir=self.dir / "voice_previews")
+
+    def episode_plan(self, n: int):
+        ep = next((e for e in self.plan.episodes if e.number == n), None)
+        if ep is None:
+            raise SystemExit(f"{n}-қисм режада йўқ (1–{len(self.plan.episodes)})")
+        return ep
 
 
 def pick_serial(name: str | None) -> Serial:
@@ -89,7 +118,15 @@ def pick_serial(name: str | None) -> Serial:
     return Serial(found[0])
 
 
-# ----------------------------- Буйруқлар -----------------------------
+def _jpeg(path: Path, width: int = 1280) -> Path:
+    """Telegram'га юбориш учун JPEG нусха (PNG эталонлар катта бўлиши мумкин)."""
+    out = path.with_name(path.stem + "_tg.jpg")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf", f"scale='min({width},iw)':-2",
+                    "-q:v", "3", str(out)], check=True)
+    return out
+
+
+# ----------------------------- Режа -----------------------------
 
 def cmd_plan(args) -> None:
     folder = ROOT / args.name
@@ -109,7 +146,7 @@ def cmd_plan(args) -> None:
     print(f"📖 {book_path.name}: {len(text):,} белги, {len(segments)} бўлак")
     (folder / "segments.json").write_text(json.dumps(segments, ensure_ascii=False), encoding="utf-8")
     (folder / "settings.json").write_text(json.dumps({
-        "minutes": args.minutes, "aspect": args.aspect, "music": args.music,
+        "minutes": args.minutes, "music": args.music,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("🤖 Claude бутун китобни ўқиб, сериал режасини тузмоқда (бир неча дақиқа)...")
@@ -117,65 +154,143 @@ def cmd_plan(args) -> None:
     (folder / "plan.json").write_text(plan.model_dump_json(indent=2), encoding="utf-8")
 
     serial = Serial(folder)
-    serial.voices()  # voices.json
+    serial.voices(create=False)  # voices.json (овозлар `voices` буйруғида яратилади)
     summary = format_plan(plan)
     print("\n" + summary)
-    print(f"\n✓ Режа: {folder / 'plan.json'}\n✓ Овозлар: {folder / 'voices.json'} (керак бўлса таҳрирланг)")
-    if not args.no_telegram:
+    print(f"\n✓ Режа: {folder / 'plan.json'}"
+          f"\nКейинги қадам: python serial.py refs  →  python serial.py voices  →  python serial.py storyboard")
+    if not args.no_telegram and telegram_on():
         tg.send_text(summary)
 
 
 def format_plan(plan: SeriesPlan) -> str:
-    lines = [f"🎬 {plan.series_title}", plan.logline, "", "👥 Персонажлар:"]
-    lines += [f"• {c.name} — {c.role}" for c in plan.characters]
+    lines = [f"🎬 {plan.series_title}", f"📚 «{plan.original_title}», {plan.author}", plan.logline, "",
+             f"🌍 {plan.country} · {plan.era}", "", "👥 Персонажлар:"]
+    lines += [f"• {c.name} ({c.age}, {c.ethnicity}) — {c.role}" for c in plan.characters]
+    lines += ["", "📍 Жойлар: " + ", ".join(loc.name for loc in plan.locations)]
     lines += ["", f"📺 Қисмлар ({len(plan.episodes)} та):"]
     lines += [f"{e.number}. {e.title} — {e.summary}" for e in plan.episodes]
     return "\n".join(lines)
 
 
-def produce_episode(serial: Serial, n: int, preview: bool = True) -> Path:
-    plan = serial.plan
-    ep_plan = next(e for e in plan.episodes if e.number == n)
+# ----------------------------- Эталонлар ва овозлар -----------------------------
+
+def _redo(value: str | None) -> set[str]:
+    return {x.strip() for x in (value or "").split(",") if x.strip()}
+
+
+def cmd_refs(args) -> None:
+    serial = pick_serial(args.serial)
+    items = ensure_references(serial.plan, serial.dir, _redo(args.redo))
+    print(f"✓ Эталонлар: {serial.dir / 'refs'} ({len(items)} та)")
+    if not args.no_telegram and telegram_on():
+        tg.send_text("🖼 Персонаж ва жой эталонлари. Ёқмаганини қайта ясаш:\n"
+                     "python serial.py refs --redo id1,id2  (id лар plan.json да)")
+        tg.send_album([(_jpeg(p), caption) for caption, p in items])
+
+
+def cmd_voices(args) -> None:
+    serial = pick_serial(args.serial)
+    path = serial.dir / "voices.json"
+    redo = _redo(args.redo)
+    if redo and path.exists():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for key in redo:
+            if key in data:
+                data[key]["voice_id"] = ""
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    voices = serial.voices(create=True)
+    print(f"✓ Овозлар: {path}")
+    previews = serial.dir / "voice_previews"
+    if not args.no_telegram and telegram_on():
+        tg.send_text("🎙 Персонажлар овозлари. Ёқмаганини қайта ясаш: python serial.py voices --redo id\n"
+                     "Ёки voices.json га ElevenLabs кутубхонасидан ўзингиз танлаган voice_id ни ёзинг.")
+        for key, v in voices.items():
+            sample = previews / f"{key}.mp3"
+            if sample.exists() and (not redo or key in redo):
+                tg.send_audio(sample, f"{v['name']} ({key})")
+
+
+# ----------------------------- Қисм тайёрлаш -----------------------------
+
+def load_script(serial: Serial, n: int) -> EpisodeScript:
+    ep_plan = serial.episode_plan(n)
     ep_dir = serial.ep_dir(n)
     ep_dir.mkdir(parents=True, exist_ok=True)
-    minutes = serial.settings["minutes"]
-
-    # Тил назорати: қисм бир тилда ясалгач, бошқа тилда аралаштирилмайди
-    lang = os.environ.get("DUB_LANGUAGE", "ru").lower()
-    marker = ep_dir / "dub_language.txt"
     script_path = ep_dir / "script.json"
-    if marker.exists():
-        made_in = marker.read_text(encoding="utf-8").strip()
-        if made_in != lang:
-            raise SystemExit(
-                f"{n}-қисм «{made_in}» тилида ясалган, ҳозирги тил «{lang}». "
-                f"Аралашмаслиги учун {ep_dir} папкасини бошқа номга ўзгартириб қайта ишга туширинг."
-            )
-    elif script_path.exists():
-        raise SystemExit(
-            f"{ep_dir} папкасида тил маркери йўқ (эски қисм, тили номаълум). "
-            "Уни бошқа номга ўзгартириб қайта ишга туширинг."
-        )
-    else:
-        marker.write_text(lang, encoding="utf-8")
-
     if script_path.exists():
-        script = EpisodeScript.model_validate_json(script_path.read_text(encoding="utf-8"))
-    else:
-        print(f"✍️  {n}-қисм сценарийси ёзилмоқда...")
-        prev = next((e for e in plan.episodes if e.number == n - 1), None)
-        prev_summary = f"{prev.summary} Якуни: {prev.cliffhanger}" if prev else ""
-        script = write_episode(plan, ep_plan, serial.segments, minutes, prev_summary)
-        script_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+        try:
+            return EpisodeScript.model_validate_json(script_path.read_text(encoding="utf-8"))
+        except ValidationError:
+            raise SystemExit(
+                f"{script_path} эски форматда. {ep_dir} папкасини бошқа номга ўзгартириб, қайта ишга туширинг."
+            )
+    print(f"✍️  {n}-қисм сценарийси ёзилмоқда...")
+    prev = next((e for e in serial.plan.episodes if e.number == n - 1), None)
+    prev_summary = f"{prev.summary} Финал: {prev.cliffhanger}" if prev else ""
+    script = write_episode(serial.plan, ep_plan, serial.segments, serial.settings["minutes"], prev_summary)
+    script_path.write_text(script.model_dump_json(indent=2), encoding="utf-8")
+    long_shots = [s.number for s in script.shots
+                  if sum(speech_seconds(line.text) for line in s.lines) > s.duration_seconds + 1.5]
+    if long_shots:
+        print(f"   ℹ️  Нутқ узун кадрлар (видео секинлашади ёки узайтирилади): {long_shots}")
+    return script
 
+
+def format_script(script: EpisodeScript) -> str:
+    lines = [f"📺 {script.number}-қисм «{script.title}»", ""]
+    for s in script.shots:
+        lines.append(f"{s.number}. [{s.shot_type}] {s.description}")
+        for line in s.lines:
+            lines.append(f"   — {line.speaker}: {line.text}")
+    return "\n".join(lines)
+
+
+def cmd_storyboard(args) -> None:
+    serial = pick_serial(args.serial)
+    n = args.episode or serial.next_unpublished()
+    if n is None:
+        print("Барча қисмлар чиқарилган.")
+        return
+    script = load_script(serial, n)
+    ensure_references(serial.plan, serial.dir)
+    builder = EpisodeBuilder(serial.plan, serial.voices(create=False), serial.dir, serial.ep_dir(n))
+    print(f"🖼  {n}-қисм раскадровкаси ({len(script.shots)} кадр)...")
+    sheet = builder.storyboard(script)
+    print(f"✓ {sheet}")
+    if not args.no_telegram and telegram_on():
+        tg.send_photo(_jpeg(sheet, 1620), f"🎞 {n}-қисм раскадровкаси. Ёқмаган кадр расмини ўчиринг: "
+                                          f"episode_{n:02d}/clips/shot_NN.png ва қайта ишга туширинг")
+        tg.send_text(format_script(script))
+
+
+def write_post(serial: Serial, n: int, script: EpisodeScript) -> Path:
+    """YouTube Shorts ва Instagram Reels учун тайёр сарлавҳа ва тавсиф."""
+    plan = serial.plan
+    tags = " ".join("#" + re.sub(r"\W+", "", w) for w in ["сериал", "кино", plan.series_title.split()[0]] if w)
+    text = (
+        f"YouTube сарлавҳа:\n{plan.series_title} — Серия {n}: {script.title} #shorts\n\n"
+        f"Тавсиф (YouTube ва Instagram):\n{script.recap}\n\n{script.next_episode_teaser}\n\n"
+        f"По мотивам книги «{plan.original_title}», {plan.author}.\n{tags}\n"
+    )
+    path = serial.ep_dir(n) / "post.txt"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def produce_episode(serial: Serial, n: int, preview: bool = True) -> Path:
+    script = load_script(serial, n)
+    ensure_references(serial.plan, serial.dir)
+    builder = EpisodeBuilder(serial.plan, serial.voices(create=True), serial.dir, serial.ep_dir(n))
     print(f"🎬 {n}-қисм йиғилмоқда ({len(script.shots)} кадр)...")
     music = serial.settings.get("music") or os.environ.get("BACKGROUND_MUSIC")
-    builder = EpisodeBuilder(plan, serial.voices(), ep_dir, serial.settings.get("aspect", "16:9"))
-    video = builder.build(script, Path(music) if music else None)
+    video = builder.build(script, is_last=n == serial.plan.episodes[-1].number,
+                          music_file=Path(music) if music else None)
+    write_post(serial, n, script)
     print(f"   ✓ Тайёр: {video}")
     logger.info("%s-қисм тайёр: %s", n, video)
 
-    if preview and os.environ.get("TELEGRAM_BOT_TOKEN"):
+    if preview and telegram_on():
         from video import compress_for_telegram
         tg.send_video(compress_for_telegram(video), caption=f"👀 Олдиндан кўриш: {n}-қисм «{script.title}»")
     return video
@@ -195,15 +310,18 @@ def cmd_produce(args) -> None:
         produce_episode(serial, n, preview=not args.no_telegram)
 
 
+# ----------------------------- Чиқариш -----------------------------
+
 def caption_for(serial: Serial, n: int) -> str:
     script = EpisodeScript.model_validate_json((serial.ep_dir(n) / "script.json").read_text(encoding="utf-8"))
     total = len(serial.plan.episodes)
-    text = f"🎬 {serial.plan.series_title}\n📺 {n}-қисм. «{script.title}»\n\n{script.next_episode_teaser}"
+    text = (f"🎬 {serial.plan.series_title}\n📺 Серия {n}. «{script.title}»\n\n"
+            f"{script.recap}\n\n{script.next_episode_teaser}")
     if n < total:
         when = os.environ.get("PUBLISH_TIME")
-        text += f"\n\n⏰ {n + 1}-қисм эртага" + (f" соат {when} да" if when else "") + "!"
+        text += f"\n\n⏰ Серия {n + 1} — завтра" + (f" в {when}" if when else "") + "!"
     else:
-        text += "\n\n🏁 Сўнгги қисм. Томоша қилганингиз учун раҳмат!"
+        text += "\n\n🏁 Последняя серия. Спасибо, что смотрели!"
     return text
 
 
@@ -236,34 +354,48 @@ def cmd_daily(args) -> None:
     if n is None:
         print("Сериал тугаган.")
         return
+    current = n
     try:
         if not serial.is_ready(n):
             produce_episode(serial, n, preview=False)
         publish(serial, n)
         # Эртанги қисмни ҳозирдан тайёрлаймиз — админ олдиндан кўриб чиқади
         for ahead in range(n + 1, n + 1 + args.ahead):
+            current = ahead
             if any(e.number == ahead for e in serial.plan.episodes) and not serial.is_ready(ahead):
                 produce_episode(serial, ahead, preview=True)
-    except (Exception, SystemExit) as exc:  # админни огоҳлантириш (тил назорати SystemExit ташлайди)
-        logger.exception("Кундалик иш хатоси (%s-қисм)", n)
-        if os.environ.get("TELEGRAM_BOT_TOKEN"):
-            tg.send_text(f"⚠️ Сериал хатоси ({n}-қисм): {exc}"[:3000])
+    except (Exception, SystemExit) as exc:  # админни огоҳлантириш
+        logger.exception("Кундалик иш хатоси (%s-қисм)", current)
+        if telegram_on():
+            tg.send_text(f"⚠️ Сериал хатоси ({current}-қисм): {exc}"[:3000])
         raise
 
 
 def cmd_status(args) -> None:
     serial = pick_serial(args.serial)
     published = {p["episode"] for p in serial.state["published"]}
-    print(f"🎬 {serial.plan.series_title}")
+    refs = serial.dir / "refs"
+    n_refs = len(list(refs.glob("*.png"))) if refs.exists() else 0
+    voices = json.loads((serial.dir / "voices.json").read_text(encoding="utf-8")) if (serial.dir / "voices.json").exists() else {}
+    print(f"🎬 {serial.plan.series_title}  ({serial.plan.country}, {serial.plan.era})")
+    print(f"   эталонлар: {n_refs}/{len(serial.plan.characters) + len(serial.plan.locations)}, "
+          f"овозлар: {sum(1 for v in voices.values() if v.get('voice_id'))}/{len(serial.plan.characters) + 1}")
     for e in serial.plan.episodes:
         mark = "📢 чиқди" if e.number in published else ("✅ тайёр" if serial.is_ready(e.number) else "⏳")
         print(f"  {e.number:>2}. {mark:<9} {e.title}")
 
 
+def cmd_check_models(args) -> None:
+    import fal_api
+    import visuals
+    for name in ("IMAGE_MODEL", "IMAGE_EDIT_MODEL", "VIDEO_MODEL", "LIPSYNC_MODEL"):
+        print(f"[{name}] " + fal_api.describe(visuals.model(name)) + "\n")
+
+
 def main() -> int:
     load_dotenv()
     setup_logging()
-    parser = argparse.ArgumentParser(description="Китобдан кундалик AI-сериал")
+    parser = argparse.ArgumentParser(description="Китобдан кундалик вертикал AI-сериал (рус дубляжи)")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("plan", help="Китобни ўқиб сериал режасини тузиш")
@@ -271,14 +403,31 @@ def main() -> int:
     src.add_argument("--book", help="Китоб файли (.pdf .docx .fb2 .epub .txt)")
     src.add_argument("--url", help="Китоб файлига тўғридан-тўғри ҳавола")
     src.add_argument("--from-telegram", action="store_true", help="Ботга юборилган охирги файл")
-    p.add_argument("--name", required=True, help="Сериал папкаси номи (лотинча), мас. ikki_eshik_orasi")
-    p.add_argument("--minutes", type=float, default=2.0, help="Ҳар қисм узунлиги, дақиқа (стандарт 2)")
+    p.add_argument("--name", required=True, help="Сериал папкаси номи (лотинча), мас. snow_country")
+    p.add_argument("--minutes", type=float, default=2.0, help="Ҳар қисм узунлиги, дақиқа (стандарт 2, кўпи билан 2.8)")
     p.add_argument("--episodes", type=int, help="Қисмлар сони (бермасангиз Claude ўзи танлайди)")
-    p.add_argument("--aspect", default="16:9", choices=["16:9", "9:16", "1:1"])
-    p.add_argument("--music", help="Фон мусиқаси (mp3) — ҳуқуқи ўзингизда бўлган файл")
+    p.add_argument("--music", help="Ўз мусиқангиз (mp3) — бўлмаса ҳар қисмга мусиқа басталанади")
     p.add_argument("--wishes", default="", help="Қўшимча истаклар")
     p.add_argument("--no-telegram", action="store_true")
     p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("refs", help="Персонаж ва жой эталон расмлари")
+    p.add_argument("--serial")
+    p.add_argument("--redo", help="Қайта ясаш: id лар вергул билан (мас. kenji,tea_house)")
+    p.add_argument("--no-telegram", action="store_true")
+    p.set_defaults(func=cmd_refs)
+
+    p = sub.add_parser("voices", help="Персонажларга русча овоз яратиш")
+    p.add_argument("--serial")
+    p.add_argument("--redo", help="Қайта яратиш: id лар вергул билан (мас. kenji,narrator)")
+    p.add_argument("--no-telegram", action="store_true")
+    p.set_defaults(func=cmd_voices)
+
+    p = sub.add_parser("storyboard", help="Қисм раскадровкаси (фақат калит расмлар)")
+    p.add_argument("--serial")
+    p.add_argument("--episode", type=int)
+    p.add_argument("--no-telegram", action="store_true")
+    p.set_defaults(func=cmd_storyboard)
 
     p = sub.add_parser("produce", help="Навбатдаги қисм(лар)ни тайёрлаш")
     p.add_argument("--serial")
@@ -299,6 +448,9 @@ def main() -> int:
     p = sub.add_parser("status", help="Қисмлар ҳолати")
     p.add_argument("--serial")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("check-models", help="fal.ai моделлари қабул қиладиган параметрлар")
+    p.set_defaults(func=cmd_check_models)
 
     args = parser.parse_args()
     args.func(args)

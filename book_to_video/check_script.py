@@ -67,6 +67,14 @@ def check(script: dict) -> list[str]:
             break
         problems.append(f"[кўп учрайди] «{phrase}» — {n} марта")
 
+    # 4) Кадрга сиғмайдиган нутқ (рус нутқи ~14.5 белги/сония)
+    for shot in script.get("shots", []):
+        speech = sum(len(" ".join((line.get("text") or "").split())) for line in shot.get("lines", [])) / 14.5
+        planned = shot.get("duration_seconds") or 0
+        if speech > max(planned, 8) + 0.5:
+            problems.append(f"[узун нутқ] кадр {shot.get('number')}: ~{speech:.1f} с нутқ, кадр {planned} с "
+                            "— репликани қисқартиринг ёки кадрни иккига бўлинг")
+
     return problems
 
 
