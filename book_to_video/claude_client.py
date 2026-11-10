@@ -13,8 +13,9 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
 def client() -> anthropic.Anthropic:
-    # ANTHROPIC_API_KEY муҳит ўзгарувчисидан олинади
-    return anthropic.Anthropic()
+    # ANTHROPIC_API_KEY муҳит ўзгарувчисидан олинади. SDK 429 (лимит), 5xx ва тармоқ хатоларида
+    # ўзи кутиб қайта уринади; кундалик автоматик иш узилмаслиги учун уринишлар сонини оширамиз.
+    return anthropic.Anthropic(max_retries=5)
 
 
 def check(message, hint: str = "") -> None:

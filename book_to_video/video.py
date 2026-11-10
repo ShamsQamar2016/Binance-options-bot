@@ -11,6 +11,8 @@ from pathlib import Path
 
 import requests
 
+from fileutil import FFMPEG_TIMEOUT, PROBE_TIMEOUT
+
 logger = logging.getLogger(__name__)
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -207,14 +209,14 @@ def concat_clips(clips: list[Path], out_path: Path) -> Path:
 
     # Клиплар бир моделдан бўлгани учун одатда тез нусхалаш (-c copy) етарли
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out_path)]
-    first = subprocess.run(cmd, capture_output=True)
+    first = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT)
     if first.returncode != 0:
         # Биринчи уриниш нега йиқилганини логлаймиз, акс ҳолда сабаб йўқолади
         logger.warning("FFmpeg -c copy муваффақиятсиз: %s", first.stderr.decode("utf-8", "ignore")[-500:])
         # Формат фарқ қилса — қайта кодлаш
         cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out_path)]
-        res = subprocess.run(cmd, capture_output=True)
+        res = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT)
         if res.returncode != 0:
             raise RuntimeError(f"FFmpeg қайта кодлаш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
     list_file.unlink(missing_ok=True)
@@ -233,7 +235,7 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
         res = subprocess.run(
             ["ffmpeg", "-y", "-i", str(video), "-vf", scale, "-c:v", "libx264", *rate, "-preset", "medium",
              "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)],
-            capture_output=True,
+            capture_output=True, timeout=FFMPEG_TIMEOUT,
         )
         if res.returncode != 0:
             raise RuntimeError(f"FFmpeg сиқиш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
@@ -242,7 +244,7 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
         # Ҳали ҳам катта — узунликка қараб битрейтни ҳисоблаймиз
         seconds = float(subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
-            capture_output=True, text=True).stdout.strip() or 60)
+            capture_output=True, text=True, timeout=PROBE_TIMEOUT).stdout.strip() or 60)
         kbps = int(max_mb * 8 * 1024 * 0.9 / seconds) - 128
         rate = ["-b:v", f"{max(300, kbps)}k", "-maxrate", f"{max(300, kbps)}k", "-bufsize", f"{2 * max(300, kbps)}k"]
     return out

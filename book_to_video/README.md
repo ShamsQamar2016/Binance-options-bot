@@ -181,6 +181,12 @@ python serial.py status
 Сценарийни текшириш (такрорлар, кадрга сиғмайдиган узун нутқ):
 `python check_script.py output/serials/snow_country/episode_01/script.json`
 
+### Аудит учун битта файл: `FULL_CODE.md`
+
+`FULL_CODE.md` да лойиҳанинг ҳамма файллари битта жойда. Уни `make_full_code.py` ясайди. GitHub Actions
+(`.github/workflows/full-code.yml`) код ўзгарган ҳар push'дан кейин уни автоматик янгилайди, шунинг учун
+GitHub'даги `FULL_CODE.md` доим охирги кодга мос бўлади. Компьютерда қўлда янгилаш: `python make_full_code.py`.
+
 ### Моделлар
 
 Барча тасвир моделлари битта **fal.ai** калити орқали ишлайди. Уларни `.env` да алмаштириш мумкин:

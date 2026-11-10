@@ -300,13 +300,23 @@ def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
             _journal(lambda j: j.pop(key, None))
 
     logger.info("fal.ai → %s %s", endpoint, json.dumps(_short(arguments), ensure_ascii=False)[:600])
-    handle = _with_retry(lambda: client.submit(endpoint, arguments=arguments), f"{endpoint} юбориш", attempts=2)
+    handle = _submit(client, endpoint, arguments)
     _journal(lambda j: j.__setitem__(key, {"endpoint": endpoint, "request_id": handle.request_id, "at": time.time()}))
     try:
         return _wait(client, endpoint, handle.request_id, key, timeout_s, started)
     except _RequestGone:
         _journal(lambda j: j.pop(key, None))
         raise RuntimeError(f"fal.ai: {endpoint} сўрови {handle.request_id} йўқолиб қолди")
+
+
+def _submit(client, endpoint: str, arguments: dict):
+    """Сўровни юборади. Устидан қайта уринмаймиз: fal-client вақтинчалик тармоқ хатоларини ўзи
+    қайта юборади, иккинчи қават эса битта иш учун икки марта пул тўлашга олиб келиши мумкин."""
+    try:
+        return client.submit(endpoint, arguments=arguments)
+    except Exception as exc:
+        detail = getattr(getattr(exc, "response", None), "text", "") or ""
+        raise RuntimeError(f"fal.ai: {endpoint} сўрови юборилмади: {exc} {detail[:1500]}") from exc
 
 
 def _wait(client, endpoint: str, request_id: str, key: str, timeout_s: int, started: float) -> dict:

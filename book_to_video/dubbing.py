@@ -21,7 +21,7 @@ from pathlib import Path
 
 import requests
 
-from fileutil import write_text_atomic
+from fileutil import PROBE_TIMEOUT, write_text_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,6 @@ def synthesize(text: str, voice: dict, delivery: str, out: Path) -> Path:
 def audio_duration(path: Path) -> float:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=PROBE_TIMEOUT,
     )
     return float(result.stdout.strip())

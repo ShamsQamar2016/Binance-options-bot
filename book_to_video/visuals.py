@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 
 import fal_api
-from fileutil import temp_name
+from fileutil import PROBE_TIMEOUT, temp_name
 from series_planner import Character, Location, SeriesPlan, Shot, pick_best_image
 
 logger = logging.getLogger(__name__)
@@ -205,7 +205,7 @@ def _thumb(path: Path) -> Path:
         if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
             tmp = temp_name(out)
             subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf",
-                            "scale='min(768,iw)':-2", "-q:v", "4", str(tmp)], check=True)
+                            "scale='min(768,iw)':-2", "-q:v", "4", str(tmp)], check=True, timeout=PROBE_TIMEOUT)
             os.replace(tmp, out)
     return out
 

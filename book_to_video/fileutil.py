@@ -14,6 +14,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# ffmpeg/ffprobe учун вақт чегараси (сония): осилиб қолган жараён кундалик ишни тўхтатиб қўймасин
+FFMPEG_TIMEOUT = int(os.environ.get("FFMPEG_TIMEOUT", "3600"))
+PROBE_TIMEOUT = 120
+
 
 def temp_name(path: Path) -> Path:
     """Шу жараён ва шу поток учун ноёб вақтинчалик ном (кенгайтма сақланади)."""
@@ -25,8 +29,14 @@ def write_text_atomic(path: Path, text: str) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = temp_name(path)
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())  # ток ўчса ҳам дискда тўлиқ сақланган бўлсин
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def write_json_atomic(path: Path, data) -> None:

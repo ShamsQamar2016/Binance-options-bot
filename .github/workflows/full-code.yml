@@ -1,0 +1,40 @@
+# book_to_video/FULL_CODE.md ни код ўзгарганда автоматик янгилайди.
+# Ташқи (учинчи томон) action ишлатилмайди: фақат GitHub'нинг расмий checkout'и ва ўзимизнинг скрипт.
+name: Update FULL_CODE.md
+
+on:
+  push:
+    paths:
+      - "book_to_video/**"
+      - "!book_to_video/FULL_CODE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: full-code-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # «охирги ўзгариш» устуни учун тўлиқ тарих керак
+
+      - name: Regenerate FULL_CODE.md
+        run: python3 book_to_video/make_full_code.py
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- book_to_video/FULL_CODE.md; then
+            echo "FULL_CODE.md is up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add book_to_video/FULL_CODE.md
+          git commit -m "Update FULL_CODE.md"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

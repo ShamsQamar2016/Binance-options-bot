@@ -31,6 +31,7 @@ from pathlib import Path
 import sound
 import visuals
 from dubbing import audio_duration, synthesize
+from fileutil import FFMPEG_TIMEOUT, PROBE_TIMEOUT
 from series_planner import Character, EpisodeScript, Line, Location, SeriesPlan, Shot
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,12 @@ FONT_CANDIDATES = [
 
 # ----------------------------- ffmpeg ёрдамчилари -----------------------------
 
-def _run(cmd: list[str], cwd: Path | None = None) -> None:
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+def _run(cmd: list[str], cwd: Path | None = None, timeout: int = FFMPEG_TIMEOUT) -> None:
+    try:
+        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"ffmpeg {timeout} сонияда тугамади (тўхтатилди):\n{' '.join(cmd)[:2000]}")
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg хатоси:\n{' '.join(cmd)[:3000]}\n{result.stderr[-3000:]}")
 
@@ -68,7 +73,8 @@ def media_duration(path: Path) -> float:
 
 def has_audio(path: Path) -> bool:
     result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
-                             "stream=index", "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+                             "stream=index", "-of", "csv=p=0", str(path)], capture_output=True, text=True,
+                            timeout=PROBE_TIMEOUT)
     return bool(result.stdout.strip())
 
 
@@ -463,7 +469,8 @@ class EpisodeBuilder:
             fonts.mkdir(exist_ok=True)
             shutil.copy(file, fonts / Path(file).name)
             if not name:
-                probe = subprocess.run(["fc-scan", "--format", "%{family[0]}", file], capture_output=True, text=True) \
+                probe = subprocess.run(["fc-scan", "--format", "%{family[0]}", file], capture_output=True, text=True,
+                                       timeout=PROBE_TIMEOUT) \
                     if shutil.which("fc-scan") else None
                 name = (probe.stdout.strip() if probe and probe.returncode == 0 else "") or Path(file).stem
             return name, ":fontsdir=fonts"

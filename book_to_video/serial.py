@@ -35,7 +35,7 @@ import telegram_sender as tg
 from book_sources import download_from_telegram, download_from_url, load_text
 from dubbing import build_voice_map
 from episode_builder import EpisodeBuilder, ensure_references
-from fileutil import write_text_atomic
+from fileutil import PROBE_TIMEOUT, write_text_atomic
 from series_planner import (EpisodeScript, SeriesPlan, long_speech_shots, make_segments, normalize_script,
                             plan_series, write_episode)
 
@@ -124,7 +124,7 @@ def _jpeg(path: Path, width: int = 1280) -> Path:
     """Telegram'га юбориш учун JPEG нусха (PNG эталонлар катта бўлиши мумкин)."""
     out = path.with_name(path.stem + "_tg.jpg")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf", f"scale='min({width},iw)':-2",
-                    "-q:v", "3", str(out)], check=True)
+                    "-q:v", "3", str(out)], check=True, timeout=PROBE_TIMEOUT)
     return out
 
 
