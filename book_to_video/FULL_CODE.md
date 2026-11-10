@@ -2,14 +2,14 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `7a48e56` (2026-11-10). Файллар: 20 та, жами 3769 қатор.
+Код версияси: коммит `9d8bb8a` (2026-11-10). Файллар: 20 та, жами 3839 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
 | 1 | `README.md` | Қўлланма: ўрнатиш ва ишлатиш | 246 | e5d276a (2026-11-10) |
 | 2 | `requirements.txt` | Керакли Python кутубхоналари | 8 | e5d276a (2026-11-10) |
 | 3 | `.env.example` | Калитлар ва созламалар намунаси | 69 | e5d276a (2026-11-10) |
-| 4 | `serial.py` | Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга | 467 | e5d276a (2026-11-10) |
+| 4 | `serial.py` | Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга | 537 | 9d8bb8a (2026-11-10) |
 | 5 | `series_planner.py` | Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи) | 434 | e5d276a (2026-11-10) |
 | 6 | `claude_client.py` | Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой) | 61 | e5d276a (2026-11-10) |
 | 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | e5d276a (2026-11-10) |
@@ -777,6 +777,73 @@ def cmd_status(args) -> None:
         print(f"  {e.number:>2}. {mark:<9} {e.title}")
 
 
+def cmd_doctor(args) -> int:
+    """Пилот қисмдан олдин: ҳамма нарса тайёрми — калитлар, ffmpeg, шрифт, кутубхоналар."""
+    import importlib
+    import shutil
+
+    from episode_builder import FONT_CANDIDATES
+
+    problems = 0
+
+    def line(ok: bool, label: str, hint: str = "", required: bool = True) -> None:
+        nonlocal problems
+        if ok:
+            print(f"  ✓ {label}")
+        elif required:
+            problems += 1
+            print(f"  ✗ {label}" + (f" — {hint}" if hint else ""))
+        else:
+            print(f"  · {label}" + (f" — {hint}" if hint else "") + " (ихтиёрий)")
+
+    print("Кутубхоналар:")
+    for module, pip_name in [("anthropic", "anthropic"), ("fal_client", "fal-client"),
+                             ("pydantic", "pydantic"), ("dotenv", "python-dotenv"), ("requests", "requests")]:
+        try:
+            importlib.import_module(module)
+            line(True, module)
+        except ImportError:
+            line(False, module, f"pip install {pip_name}")
+
+    print("Дастурлар:")
+    for tool in ("ffmpeg", "ffprobe"):
+        line(shutil.which(tool) is not None, tool, "ўрнатинг: https://ffmpeg.org/download.html")
+
+    print("Калитлар (.env):")
+    keys = [
+        ("ANTHROPIC_API_KEY", True, "Claude: https://console.anthropic.com"),
+        ("FAL_KEY", True, "видео ва расм: https://fal.ai/dashboard/keys"),
+        ("ELEVENLABS_API_KEY", True, "русча овоз ва мусиқа: https://elevenlabs.io"),
+        ("TELEGRAM_BOT_TOKEN", True, "@BotFather"),
+        ("TELEGRAM_CHAT_ID", True, "сизнинг чатингиз (@userinfobot)"),
+        ("TELEGRAM_CHANNEL_ID", True, "канал (@kanал_номи), бот админи бўлсин"),
+    ]
+    for name, required, hint in keys:
+        line(bool(os.environ.get(name)), name, hint, required)
+
+    print("Кўриниш:")
+    font = os.environ.get("FONT_FILE", "")
+    font_ok = any(Path(f).exists() for f in ([font] if font else []) + FONT_CANDIDATES)
+    line(font_ok, "кирилл шрифт", "FONT_FILE ни кўрсатинг (мас. arialbd.ttf)")
+
+    print("Ёзиш:")
+    try:
+        Path("output").mkdir(parents=True, exist_ok=True)
+        probe = Path("output") / ".doctor_write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        line(True, "output/ папкасига ёзиш")
+    except OSError as exc:
+        line(False, "output/ папкасига ёзиш", str(exc))
+
+    print()
+    if problems:
+        print(f"✗ Тайёр эмас: {problems} та нарса етишмайди. Юқоридаги ✗ ларни тузатинг ва қайта текширинг.")
+        return 1
+    print("✓ Пилот қисмни ишга тушириш мумкин. Кейинги қадам: python serial.py plan --book китоб.pdf --name ном")
+    return 0
+
+
 def cmd_check_models(args) -> None:
     import fal_api
     import visuals
@@ -844,9 +911,12 @@ def main() -> int:
     p = sub.add_parser("check-models", help="fal.ai моделлари қабул қиладиган параметрлар")
     p.set_defaults(func=cmd_check_models)
 
+    p = sub.add_parser("doctor", help="Пилот қисмдан олдин: калитлар, дастурлар, шрифт текшируви")
+    p.set_defaults(func=cmd_doctor)
+
     args = parser.parse_args()
-    args.func(args)
-    return 0
+    code = args.func(args)
+    return code if isinstance(code, int) else 0
 
 
 if __name__ == "__main__":
