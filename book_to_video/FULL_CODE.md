@@ -2,30 +2,30 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `f984290` (2026-11-10). Файллар: 20 та, жами 3751 қатор.
+Код версияси: коммит `7a48e56` (2026-11-10). Файллар: 20 та, жами 3769 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
-| 1 | `README.md` | Қўлланма: ўрнатиш ва ишлатиш | 246 | f984290 (2026-11-10) |
-| 2 | `requirements.txt` | Керакли Python кутубхоналари | 8 | 1ecb993 (2026-11-09) |
-| 3 | `.env.example` | Калитлар ва созламалар намунаси | 69 | f984290 (2026-11-10) |
-| 4 | `serial.py` | Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга | 467 | f984290 (2026-11-10) |
-| 5 | `series_planner.py` | Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи) | 434 | a0f48a5 (2026-11-09) |
-| 6 | `claude_client.py` | Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой) | 61 | f984290 (2026-11-10) |
-| 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | f984290 (2026-11-10) |
-| 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | a0f48a5 (2026-11-09) |
-| 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | 85a2519 (2026-11-08) |
-| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 261 | f984290 (2026-11-10) |
-| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 395 | f984290 (2026-11-10) |
-| 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | f984290 (2026-11-10) |
-| 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | 1ecb993 (2026-11-09) |
-| 14 | `episode_builder.py` | Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун | 571 | f984290 (2026-11-10) |
-| 15 | `telegram_sender.py` | Telegram Bot API: хабар/видео юбориш, каналга жойлаш, ботга юборилган файлни олиш | 143 | 1ecb993 (2026-11-09) |
-| 16 | `video.py` | Видео генерация (fal.ai орқали Kling ва бошқа моделлар) ва клипларни бирлаштириш | 250 | f984290 (2026-11-10) |
-| 17 | `check_script.py` | Сценарий текшируви: кетма-кет такрорланган сўзлар, бир хил репликалар ва кўп учрайдиган иборалар | 97 | a0f48a5 (2026-11-09) |
-| 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | f984290 (2026-11-10) |
-| 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | a0f48a5 (2026-11-09) |
-| 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | a0f48a5 (2026-11-09) |
+| 1 | `README.md` | Қўлланма: ўрнатиш ва ишлатиш | 246 | e5d276a (2026-11-10) |
+| 2 | `requirements.txt` | Керакли Python кутубхоналари | 8 | e5d276a (2026-11-10) |
+| 3 | `.env.example` | Калитлар ва созламалар намунаси | 69 | e5d276a (2026-11-10) |
+| 4 | `serial.py` | Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга | 467 | e5d276a (2026-11-10) |
+| 5 | `series_planner.py` | Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи) | 434 | e5d276a (2026-11-10) |
+| 6 | `claude_client.py` | Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой) | 61 | e5d276a (2026-11-10) |
+| 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | e5d276a (2026-11-10) |
+| 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | e5d276a (2026-11-10) |
+| 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | e5d276a (2026-11-10) |
+| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 246 | 7a48e56 (2026-11-10) |
+| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 428 | 7a48e56 (2026-11-10) |
+| 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | e5d276a (2026-11-10) |
+| 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | e5d276a (2026-11-10) |
+| 14 | `episode_builder.py` | Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун | 571 | e5d276a (2026-11-10) |
+| 15 | `telegram_sender.py` | Telegram Bot API: хабар/видео юбориш, каналга жойлаш, ботга юборилган файлни олиш | 143 | e5d276a (2026-11-10) |
+| 16 | `video.py` | Видео генерация (fal.ai орқали Kling ва бошқа моделлар) ва клипларни бирлаштириш | 250 | e5d276a (2026-11-10) |
+| 17 | `check_script.py` | Сценарий текшируви: кетма-кет такрорланган сўзлар, бир хил репликалар ва кўп учрайдиган иборалар | 97 | e5d276a (2026-11-10) |
+| 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
+| 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
+| 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
 
 ---
 
@@ -1685,22 +1685,11 @@ def location_ref_prompt(plan: SeriesPlan, loc: Location) -> str:
 
 
 def text_to_image(prompt: str, out: Path, aspect: str, count: int = 1) -> list[Path]:
-    result = fal_api.run(model("IMAGE_MODEL"), {
+    outs = [out if count == 1 else out.with_name(f"{out.stem}_v{i}{out.suffix}") for i in range(1, count + 1)]
+    return fal_api.run_to_files(model("IMAGE_MODEL"), {
         "prompt": prompt, "aspect_ratio": aspect, "resolution": os.environ.get("IMAGE_RESOLUTION", "2K"),
         "num_images": count, "output_format": "png",
-    }, timeout_s=600)
-    return _save_images(result, out, count)
-
-
-def _save_images(result: dict, out: Path, count: int) -> list[Path]:
-    urls = fal_api.result_urls(result)
-    if not urls:
-        raise RuntimeError(f"Расм қайтмади: {json.dumps(result)[:400]}")
-    paths = []
-    for i, url in enumerate(urls[:count], 1):
-        target = out if (count == 1 and i == 1) else out.with_name(f"{out.stem}_v{i}{out.suffix}")
-        paths.append(fal_api.download(url, target))
-    return paths
+    }, fal_api.result_urls, outs, timeout_s=600)
 
 
 def make_reference(plan: SeriesPlan, item: Character | Location, out: Path) -> Path:
@@ -1754,17 +1743,15 @@ def make_keyframe(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]], ou
                "num_images": takes, "output_format": "png"}
     candidates: list[Path] = []
     while len(candidates) < takes:
+        need = takes - len(candidates)
+        start = len(candidates)
         if refs:
             payload["image_urls"] = [fal_api.upload(p) for _, p in refs]
-            result = fal_api.run(model("IMAGE_EDIT_MODEL"), payload, timeout_s=600)
+            endpoint = model("IMAGE_EDIT_MODEL")
         else:
-            result = fal_api.run(model("IMAGE_MODEL"), payload, timeout_s=600)
-        urls = fal_api.result_urls(result)[: takes - len(candidates)]
-        if not urls:
-            raise RuntimeError(f"Калит расм қайтмади: {json.dumps(result)[:400]}")
-        for url in urls:
-            n = len(candidates) + 1
-            candidates.append(fal_api.download(url, out.with_name(f"{out.stem}_v{n}.png")))
+            endpoint = model("IMAGE_MODEL")
+        outs = [out.with_name(f"{out.stem}_v{start + i}.png") for i in range(1, need + 1)]
+        candidates += fal_api.run_to_files(endpoint, payload, lambda r: fal_api.result_urls(r)[:need], outs, timeout_s=600)
     choice = 1
     if len(candidates) > 1:
         try:
@@ -1833,7 +1820,7 @@ def make_clip(plan: SeriesPlan, shot: Shot, keyframe: Path, seconds: float, out:
               native_audio: bool, ambience: str = "") -> Path:
     prompt = motion_prompt(plan, shot, native_audio, ambience)
     (out.parent / f"{out.stem}_prompt.txt").write_text(prompt, encoding="utf-8")
-    result = fal_api.run(model("VIDEO_MODEL"), {
+    return fal_api.run_to_files(model("VIDEO_MODEL"), {
         "prompt": prompt,
         "image_url": fal_api.upload(keyframe),
         "duration": seconds,
@@ -1841,8 +1828,7 @@ def make_clip(plan: SeriesPlan, shot: Shot, keyframe: Path, seconds: float, out:
         "resolution": os.environ.get("VIDEO_RESOLUTION", "1080p"),
         "generate_audio": native_audio,
         "negative_prompt": NEGATIVE,
-    }, timeout_s=1800)
-    return fal_api.download(fal_api.result_url(result, "video"), out)
+    }, lambda r: [fal_api.result_url(r, "video")], [out], timeout_s=1800)[0]
 
 
 def clip_seconds(needed: float) -> float:
@@ -1855,11 +1841,10 @@ def clip_seconds(needed: float) -> float:
 
 
 def lipsync(video: Path, audio: Path, out: Path) -> Path:
-    result = fal_api.run(model("LIPSYNC_MODEL"), {
+    return fal_api.run_to_files(model("LIPSYNC_MODEL"), {
         "video_url": fal_api.upload(video),
         "audio_url": fal_api.upload(audio),
-    }, timeout_s=1800)
-    return fal_api.download(fal_api.result_url(result, "video"), out)
+    }, lambda r: [fal_api.result_url(r, "video")], [out], timeout_s=1800)[0]
 `````
 
 ---
@@ -2149,13 +2134,9 @@ def _journal(update=None):
         return data
 
 
-def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
-    """Моделни навбат орқали ишга туширади ва натижани (JSON) қайтаради.
-
-    Сўров fal.ai га фақат БИР МАРТА юборилади. Кутиш вақтида хато бўлса ёки вақт тугаса, сўров
-    қайта юборилмайди: request_id журналда қолади ва кейинги ишга туширишда ўша сўровнинг натижаси
-    олинади (иккинчи марта пул тўланмайди).
-    """
+def _start(endpoint: str, payload: dict, timeout_s: int) -> tuple[str, dict]:
+    """Сўровни юборади (ёки олдингисини давом эттиради) ва натижани қайтаради. Журнал ёзувини ўчирмайди:
+    ўчириш — натижа файлга тўлиқ сақлангандан кейин (run_to_files) ёки доимий хатода."""
     arguments = fit(endpoint, payload)
     key = hashlib.sha1(f"{endpoint}|{json.dumps(arguments, sort_keys=True, ensure_ascii=False)}".encode()).hexdigest()
     client = _client()
@@ -2165,7 +2146,7 @@ def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
     if entry and time.time() - entry.get("at", 0) < JOURNAL_MAX_AGE:
         logger.info("fal.ai: олдинги сўров давом эттирилмоқда %s (%s)", entry["request_id"], endpoint)
         try:
-            return _wait(client, endpoint, entry["request_id"], key, timeout_s, started)
+            return key, _wait(client, endpoint, entry["request_id"], key, timeout_s, started)
         except _RequestGone:
             logger.warning("fal.ai: олдинги сўров %s топилмади — янгиси юборилади", entry["request_id"])
             _journal(lambda j: j.pop(key, None))
@@ -2174,10 +2155,47 @@ def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
     handle = _submit(client, endpoint, arguments)
     _journal(lambda j: j.__setitem__(key, {"endpoint": endpoint, "request_id": handle.request_id, "at": time.time()}))
     try:
-        return _wait(client, endpoint, handle.request_id, key, timeout_s, started)
+        return key, _wait(client, endpoint, handle.request_id, key, timeout_s, started)
     except _RequestGone:
         _journal(lambda j: j.pop(key, None))
         raise RuntimeError(f"fal.ai: {endpoint} сўрови {handle.request_id} йўқолиб қолди")
+
+
+def _download_retry(url: str, out: Path, attempts: int = 4) -> Path:
+    """Файлни юклайди; тармоқ узилишида қайта уриниб кўради (сўров эмас, фақат юклаш қайта бажарилади)."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return download(url, out)
+        except requests.RequestException as exc:
+            if attempt == attempts:
+                raise
+            delay = 5 * 2 ** (attempt - 1)
+            logger.warning("fal.ai: файл юклаш хатоси (%s), %d сониядан кейин қайта", exc, delay)
+            time.sleep(delay)
+
+
+def run_to_files(endpoint: str, payload: dict, urls_of, outs: list[Path], timeout_s: int = 1800) -> list[Path]:
+    """Моделни ишга туширади ва натижа файлларини сақлайди.
+
+    Пул тежаш: журнал ёзуви фақат ҳамма файл диска тўлиқ ёзилгандан кейин ўчирилади. Юклаш узилса ёки
+    жараён тўхтаса, кейинги ишга туширишда янги сўров юборилмайди — ўша натижа қайта юкланади.
+    Сўров fal.ai га фақат БИР МАРТА юборилади; кутиш вақтида хато бўлса ҳам қайта юборилмайди.
+    urls_of(result) — натижадан URL лар рўйхати; outs — уларга мос файл йўллари.
+    """
+    key, result = _start(endpoint, payload, timeout_s)
+    urls = urls_of(result)
+    if not urls:
+        raise RuntimeError(f"fal.ai: {endpoint} натижасида файл йўқ: {json.dumps(result)[:500]}")
+    paths = [_download_retry(url, out) for url, out in zip(urls, outs)]
+    _journal(lambda j: j.pop(key, None))
+    return paths
+
+
+def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
+    """Натижани (JSON) қайтаради. Файл юклаш керак бўлса — run_to_files ишлатинг."""
+    key, result = _start(endpoint, payload, timeout_s)
+    _journal(lambda j: j.pop(key, None))
+    return result
 
 
 def _submit(client, endpoint: str, arguments: dict):
@@ -2219,7 +2237,7 @@ def _wait(client, endpoint: str, request_id: str, key: str, timeout_s: int, star
             except Exception:
                 _journal(lambda j: j.pop(key, None))  # доимий хато (мас. параметр нотўғри) — журналда қолмасин
                 raise
-            _journal(lambda j: j.pop(key, None))
+            # Журнал ёзуви бу ерда ўчирилмайди: файл сақлангандан кейин run_to_files ўчиради
             logger.info("fal.ai ← %s (%.0f сония)", endpoint, time.time() - started)
             return result
         if time.time() > deadline:
