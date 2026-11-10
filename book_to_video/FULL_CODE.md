@@ -1,57 +1,39 @@
-# book_to_video — тўлиқ код (аудитдан кейинги версия)
+# book_to_video — тўлиқ код
 
-GitHub: ShamsQamar2016/Binance-options-bot, бранч `ccr-4c4c7d98-5ed5j0`, коммит `a0f48a5` (2026-11-09).
-Бу файлда лойиҳанинг ҳамма файллари кетма-кет берилган, GitHub'дагиси билан бир хил.
+> Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-## Аудитда топилган камчиликлар ва улар тузатилган жой
+Код версияси: коммит `f984290` (2026-11-10). Файллар: 20 та, жами 3751 қатор.
 
-| № | Камчилик | Қаерда тузатилди |
-|---|---|---|
-| 1 | Чала қолган видео каналга чиқиб кетиши | `episode_builder.py` (`_final_mix`) |
-| 2 | Пулли видео сўрови такрор юборилиши | `fal_api.py` (`run`, `_wait`, журнал) |
-| 3 | Параллел ишлашда кеш файли бузилиши | `fileutil.py` (янги), `fal_api.py`, `serial.py`, `dubbing.py` |
-| 4 | Таҳрирланган `script.json` қисмни тўхтатиши | `serial.py` (`load_script`), `series_planner.py` (`normalize_script`), `visuals.py`, `episode_builder.py` (`storyboard`) |
-| 5 | Қисм рақамлари текширилмаслиги | `series_planner.py` (`normalize_plan`) |
-| 6 | Файл номи орқали папкадан ташқарига ёзиш | `book_sources.py` (`safe_filename`) |
-| 7 | Эталон нусхаси бир вақтда ёзилиши | `visuals.py` (`_thumb`) |
-| 8 | Овоз кешида созламалар ҳисобга олинмаслиги | `episode_builder.py` (`voice_lines`) |
-| 9 | Ишлатилмайдиган эски код | `video.py`, `main.py` |
-| 10 | Такрорланган код | `claude_client.py` (янги), `scenario.py`, `check_script.py` |
-| + | Кадр узунлиги оширилганда видео қотиб қолиши | `episode_builder.py` (`build_shot`) |
-
-## Файллар
-
-«Ҳолат» устуни аудит қилинган версияга (`1ecb993`) нисбатан нима ўзгарганини кўрсатади.
-
-| № | Файл | Вазифаси | Қатор | Ҳолат |
+| № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
-| 1 | `README.md` | Қўлланма: ўрнатиш ва ишлатиш | 240 | тузатилган |
-| 2 | `requirements.txt` | Керакли Python кутубхоналари | 8 | ўзгармаган |
-| 3 | `.env.example` | Калитлар ва созламалар намунаси | 66 | ўзгармаган |
-| 4 | `serial.py` | Сериал буйруқлари (асосий файл) | 467 | тузатилган |
-| 5 | `series_planner.py` | Claude: сериал режаси, сценарий, калит расм танлаш | 434 | тузатилган |
-| 6 | `claude_client.py` | Claude API билан ишлаш (умумий) | 60 | янги |
-| 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 44 | янги |
-| 8 | `book_sources.py` | Китобни олиш: файл, ҳавола ёки Telegram | 91 | тузатилган |
-| 9 | `book_reader.py` | PDF, DOCX, TXT ўқиш | 54 | ўзгармаган |
-| 10 | `visuals.py` | Эталон расм, калит расм, видео, лаб синхрони | 261 | тузатилган |
-| 11 | `fal_api.py` | fal.ai моделлари билан ишлаш | 385 | тузатилган |
-| 12 | `dubbing.py` | ElevenLabs: русча овозлар | 162 | тузатилган |
-| 13 | `sound.py` | Жой муҳити, эффектлар, мусиқа | 62 | ўзгармаган |
-| 14 | `episode_builder.py` | Қисмни йиғиш: видео, товуш, субтитр, ранг | 564 | тузатилган |
-| 15 | `telegram_sender.py` | Telegram'га юбориш | 143 | ўзгармаган |
-| 16 | `video.py` | Telegram учун сиқиш + эски трейлер режими видеоси | 248 | тузатилган |
-| 17 | `check_script.py` | Сценарий текшируви | 97 | тузатилган |
-| 18 | `main.py` | Эски трейлер режими (сериалга алоқаси йўқ) | 114 | тузатилган |
-| 19 | `scenario.py` | Эски трейлер режими сценарийси (сериалга алоқаси йўқ) | 93 | тузатилган |
+| 1 | `README.md` | Қўлланма: ўрнатиш ва ишлатиш | 246 | f984290 (2026-11-10) |
+| 2 | `requirements.txt` | Керакли Python кутубхоналари | 8 | 1ecb993 (2026-11-09) |
+| 3 | `.env.example` | Калитлар ва созламалар намунаси | 69 | f984290 (2026-11-10) |
+| 4 | `serial.py` | Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга | 467 | f984290 (2026-11-10) |
+| 5 | `series_planner.py` | Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи) | 434 | a0f48a5 (2026-11-09) |
+| 6 | `claude_client.py` | Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой) | 61 | f984290 (2026-11-10) |
+| 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | f984290 (2026-11-10) |
+| 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | a0f48a5 (2026-11-09) |
+| 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | 85a2519 (2026-11-08) |
+| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 261 | f984290 (2026-11-10) |
+| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 395 | f984290 (2026-11-10) |
+| 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | f984290 (2026-11-10) |
+| 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | 1ecb993 (2026-11-09) |
+| 14 | `episode_builder.py` | Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун | 571 | f984290 (2026-11-10) |
+| 15 | `telegram_sender.py` | Telegram Bot API: хабар/видео юбориш, каналга жойлаш, ботга юборилган файлни олиш | 143 | 1ecb993 (2026-11-09) |
+| 16 | `video.py` | Видео генерация (fal.ai орқали Kling ва бошқа моделлар) ва клипларни бирлаштириш | 250 | f984290 (2026-11-10) |
+| 17 | `check_script.py` | Сценарий текшируви: кетма-кет такрорланган сўзлар, бир хил репликалар ва кўп учрайдиган иборалар | 97 | a0f48a5 (2026-11-09) |
+| 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | f984290 (2026-11-10) |
+| 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | a0f48a5 (2026-11-09) |
+| 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | a0f48a5 (2026-11-09) |
 
 ---
 
 ## 1. `README.md`
 
-Қўлланма: ўрнатиш ва ишлатиш · тузатилган
+Қўлланма: ўрнатиш ва ишлатиш
 
-````markdown
+`````markdown
 # Китобдан AI трейлер → Telegram
 
 Бу скрипт китобни олади ва автоматик равишда:
@@ -235,6 +217,12 @@ python serial.py status
 Сценарийни текшириш (такрорлар, кадрга сиғмайдиган узун нутқ):
 `python check_script.py output/serials/snow_country/episode_01/script.json`
 
+### Аудит учун битта файл: `FULL_CODE.md`
+
+`FULL_CODE.md` да лойиҳанинг ҳамма файллари битта жойда. Уни `make_full_code.py` ясайди. GitHub Actions
+(`.github/workflows/full-code.yml`) код ўзгарган ҳар push'дан кейин уни автоматик янгилайди, шунинг учун
+GitHub'даги `FULL_CODE.md` доим охирги кодга мос бўлади. Компьютерда қўлда янгилаш: `python make_full_code.py`.
+
 ### Моделлар
 
 Барча тасвир моделлари битта **fal.ai** калити орқали ишлайди. Уларни `.env` да алмаштириш мумкин:
@@ -292,15 +280,15 @@ Start in: `book_to_video` папкаси.
   диалогларни таржимадан сўзма-сўз кўчирмайди, ўзи қайта ёзади.
 - Фон мусиқаси ҳам ҳуқуқи сизда бўлган ёки эркин лицензияли бўлсин. Стандарт ҳолатда ҳар қисмга
   ElevenLabs Music орқали янги мусиқа басталанади.
-````
+`````
 
 ---
 
 ## 2. `requirements.txt`
 
-Керакли Python кутубхоналари · ўзгармаган
+Керакли Python кутубхоналари
 
-````text
+`````text
 anthropic>=2.6.0
 fal-client>=1.0
 pydantic>=2.0
@@ -309,15 +297,15 @@ python-dotenv>=1.0
 # ихтиёрий: PDF ва DOCX китобларни ўқиш учун
 pypdf>=4.0
 python-docx>=1.1
-````
+`````
 
 ---
 
 ## 3. `.env.example`
 
-Калитлар ва созламалар намунаси · ўзгармаган
+Калитлар ва созламалар намунаси
 
-````bash
+`````bash
 # ================= Асосий калитлар =================
 # Claude API калити (сценарий, режа, калит расм танлаш): https://console.anthropic.com
 ANTHROPIC_API_KEY=sk-ant-...
@@ -377,6 +365,9 @@ FONT_FILE=
 # Шрифт номи (FONT_FILE ичидаги оила номи, мас. Montserrat). Бўш бўлса — автоматик
 SUB_FONT=
 
+# ffmpeg учун вақт чегараси (сония): осилиб қолган жараён кундалик ишни тўхтатиб қўймасин
+FFMPEG_TIMEOUT=3600
+
 # ================= Трейлер режими (main.py) =================
 # Видео провайдер: grok ёки kling
 VIDEO_PROVIDER=grok
@@ -384,15 +375,15 @@ XAI_API_KEY=xai-...
 GROK_MODEL=grok-imagine-video-1.5-lite
 GROK_RESOLUTION=720p
 FAL_MODEL=fal-ai/kling-video/v2.1/standard/text-to-video
-````
+`````
 
 ---
 
 ## 4. `serial.py`
 
-Сериал буйруқлари (асосий файл) · тузатилган
+Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга
 
-````python
+`````python
 """Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга.
 
 Персонажлар ва атмосфера китобдан олинади (япон китоби — японлар ва Япония, Америка китоби — американлар
@@ -430,7 +421,7 @@ import telegram_sender as tg
 from book_sources import download_from_telegram, download_from_url, load_text
 from dubbing import build_voice_map
 from episode_builder import EpisodeBuilder, ensure_references
-from fileutil import write_text_atomic
+from fileutil import PROBE_TIMEOUT, write_text_atomic
 from series_planner import (EpisodeScript, SeriesPlan, long_speech_shots, make_segments, normalize_script,
                             plan_series, write_episode)
 
@@ -519,7 +510,7 @@ def _jpeg(path: Path, width: int = 1280) -> Path:
     """Telegram'га юбориш учун JPEG нусха (PNG эталонлар катта бўлиши мумкин)."""
     out = path.with_name(path.stem + "_tg.jpg")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf", f"scale='min({width},iw)':-2",
-                    "-q:v", "3", str(out)], check=True)
+                    "-q:v", "3", str(out)], check=True, timeout=PROBE_TIMEOUT)
     return out
 
 
@@ -860,15 +851,15 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-````
+`````
 
 ---
 
 ## 5. `series_planner.py`
 
-Claude: сериал режаси, сценарий, калит расм танлаш · тузатилган
+Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи)
 
-````python
+`````python
 """Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи).
 
 1) plan_series   — бутун китобни ўқиб «сериал библияси»ни тузади: воқеа қаерда ва қачон бўлади,
@@ -1303,15 +1294,15 @@ def _image_block(path: Path) -> dict:
     media = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
     data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
     return {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}
-````
+`````
 
 ---
 
 ## 6. `claude_client.py`
 
-Claude API билан ишлаш (умумий) · янги
+Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой)
 
-````python
+`````python
 """Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой).
 
 Модел, fallback ва хатоларни текшириш шу ерда: ўзгартириш керак бўлса, фақат шу файл ўзгаради.
@@ -1327,8 +1318,9 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
 def client() -> anthropic.Anthropic:
-    # ANTHROPIC_API_KEY муҳит ўзгарувчисидан олинади
-    return anthropic.Anthropic()
+    # ANTHROPIC_API_KEY муҳит ўзгарувчисидан олинади. SDK 429 (лимит), 5xx ва тармоқ хатоларида
+    # ўзи кутиб қайта уринади; кундалик автоматик иш узилмаслиги учун уринишлар сонини оширамиз.
+    return anthropic.Anthropic(max_retries=5)
 
 
 def check(message, hint: str = "") -> None:
@@ -1372,15 +1364,15 @@ def text(prompt: str, effort: str = "medium", max_tokens: int = 32000) -> str:
         message = stream.get_final_message()
     check(message)
     return "".join(b.text for b in message.content if b.type == "text")
-````
+`````
 
 ---
 
 ## 7. `fileutil.py`
 
-Файлларни хавфсиз ёзиш ва ўқиш · янги
+Файлларни хавфсиз ёзиш ва ўқиш
 
-````python
+`````python
 """Файлларни хавфсиз ёзиш ва ўқиш.
 
 Файл аввал вақтинчалик номга тўлиқ ёзилади, кейин бир ҳаракатда асл номга алмаштирилади. Шунда
@@ -1397,6 +1389,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# ffmpeg/ffprobe учун вақт чегараси (сония): осилиб қолган жараён кундалик ишни тўхтатиб қўймасин
+FFMPEG_TIMEOUT = int(os.environ.get("FFMPEG_TIMEOUT", "3600"))
+PROBE_TIMEOUT = 120
+
 
 def temp_name(path: Path) -> Path:
     """Шу жараён ва шу поток учун ноёб вақтинчалик ном (кенгайтма сақланади)."""
@@ -1408,8 +1404,14 @@ def write_text_atomic(path: Path, text: str) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = temp_name(path)
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())  # ток ўчса ҳам дискда тўлиқ сақланган бўлсин
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def write_json_atomic(path: Path, data) -> None:
@@ -1425,15 +1427,15 @@ def read_json_cache(path: Path, default):
     except (ValueError, OSError) as exc:
         logger.warning("Бузилган кеш файли эътиборсиз қолдирилди: %s (%s)", path, exc)
         return default
-````
+`````
 
 ---
 
 ## 8. `book_sources.py`
 
-Китобни олиш: файл, ҳавола ёки Telegram · тузатилган
+Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл
 
-````python
+`````python
 """Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл.
 
 Китоб манбаини сиз танлайсиз: скрипт интернетдан ўзи қидирмайди, чунки
@@ -1525,15 +1527,15 @@ def load_text(path: Path) -> str:
     if len(text) < 2000:
         raise RuntimeError(f"Китоб матни жуда қисқа ({len(text)} белги) — файл тўғрими? (сканер қилинган PDF матнсиз бўлади)")
     return text
-````
+`````
 
 ---
 
 ## 9. `book_reader.py`
 
-PDF, DOCX, TXT ўқиш · ўзгармаган
+Китоб файлини ўқиш: .txt, .md, .pdf, .docx
 
-````python
+`````python
 """Китоб файлини ўқиш: .txt, .md, .pdf, .docx"""
 
 from pathlib import Path
@@ -1588,15 +1590,15 @@ def split_into_chunks(text: str, max_chars: int) -> list[str]:
     if current:
         chunks.append("\n".join(current))
     return chunks
-````
+`````
 
 ---
 
 ## 10. `visuals.py`
 
-Эталон расм, калит расм, видео, лаб синхрони · тузатилган
+Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони
 
-````python
+`````python
 """Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони.
 
 Ҳар кадр матндан эмас, тасдиқланган эталон расмлардан бошланади: шунинг учун персонаж ҳар кадрда ва
@@ -1619,7 +1621,7 @@ import threading
 from pathlib import Path
 
 import fal_api
-from fileutil import temp_name
+from fileutil import PROBE_TIMEOUT, temp_name
 from series_planner import Character, Location, SeriesPlan, Shot, pick_best_image
 
 logger = logging.getLogger(__name__)
@@ -1804,7 +1806,7 @@ def _thumb(path: Path) -> Path:
         if not out.exists() or out.stat().st_mtime < path.stat().st_mtime:
             tmp = temp_name(out)
             subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf",
-                            "scale='min(768,iw)':-2", "-q:v", "4", str(tmp)], check=True)
+                            "scale='min(768,iw)':-2", "-q:v", "4", str(tmp)], check=True, timeout=PROBE_TIMEOUT)
             os.replace(tmp, out)
     return out
 
@@ -1858,15 +1860,15 @@ def lipsync(video: Path, audio: Path, out: Path) -> Path:
         "audio_url": fal_api.upload(audio),
     }, timeout_s=1800)
     return fal_api.download(fal_api.result_url(result, "video"), out)
-````
+`````
 
 ---
 
 ## 11. `fal_api.py`
 
-fal.ai моделлари билан ишлаш · тузатилган
+fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш
 
-````python
+`````python
 """fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш.
 
 Моделлар тез-тез янгиланади ва уларнинг параметрлари бир-биридан фарқ қилади (мас. Veo'да duration
@@ -2169,13 +2171,23 @@ def run(endpoint: str, payload: dict, timeout_s: int = 1800) -> dict:
             _journal(lambda j: j.pop(key, None))
 
     logger.info("fal.ai → %s %s", endpoint, json.dumps(_short(arguments), ensure_ascii=False)[:600])
-    handle = _with_retry(lambda: client.submit(endpoint, arguments=arguments), f"{endpoint} юбориш", attempts=2)
+    handle = _submit(client, endpoint, arguments)
     _journal(lambda j: j.__setitem__(key, {"endpoint": endpoint, "request_id": handle.request_id, "at": time.time()}))
     try:
         return _wait(client, endpoint, handle.request_id, key, timeout_s, started)
     except _RequestGone:
         _journal(lambda j: j.pop(key, None))
         raise RuntimeError(f"fal.ai: {endpoint} сўрови {handle.request_id} йўқолиб қолди")
+
+
+def _submit(client, endpoint: str, arguments: dict):
+    """Сўровни юборади. Устидан қайта уринмаймиз: fal-client вақтинчалик тармоқ хатоларини ўзи
+    қайта юборади, иккинчи қават эса битта иш учун икки марта пул тўлашга олиб келиши мумкин."""
+    try:
+        return client.submit(endpoint, arguments=arguments)
+    except Exception as exc:
+        detail = getattr(getattr(exc, "response", None), "text", "") or ""
+        raise RuntimeError(f"fal.ai: {endpoint} сўрови юборилмади: {exc} {detail[:1500]}") from exc
 
 
 def _wait(client, endpoint: str, request_id: str, key: str, timeout_s: int, started: float) -> dict:
@@ -2252,15 +2264,15 @@ def describe(endpoint: str) -> str:
                                                if "minimum" in prop or "maximum" in prop else "")
         lines.append(f"  {mark} {name}: {prop.get('type', '')}{extra}")
     return "\n".join(lines)
-````
+`````
 
 ---
 
 ## 12. `dubbing.py`
 
-ElevenLabs: русча овозлар · тузатилган
+Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз
 
-````python
+`````python
 """Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз.
 
 Овозлар (voices.json):
@@ -2284,7 +2296,7 @@ from pathlib import Path
 
 import requests
 
-from fileutil import write_text_atomic
+from fileutil import PROBE_TIMEOUT, write_text_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -2420,18 +2432,18 @@ def synthesize(text: str, voice: dict, delivery: str, out: Path) -> Path:
 def audio_duration(path: Path) -> float:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=PROBE_TIMEOUT,
     )
     return float(result.stdout.strip())
-````
+`````
 
 ---
 
 ## 13. `sound.py`
 
-Жой муҳити, эффектлар, мусиқа · ўзгармаган
+Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси
 
-````python
+`````python
 """Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси.
 
 - ambience — ҳар жой учун бир марта, айланма (loop) товуш: шу жойдаги барча кадрлар остида узлуксиз
@@ -2494,15 +2506,15 @@ def music(prompt: str, seconds: float, out: Path) -> Path | None:
         print(f"   ⚠️  Мусиқа яратилмади: {str(exc)[:200]}")
         return None
     return _save(r.content, out)
-````
+`````
 
 ---
 
 ## 14. `episode_builder.py`
 
-Қисмни йиғиш: видео, товуш, субтитр, ранг · тузатилган
+Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун
 
-````python
+`````python
 """Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун.
 
 Ҳар кадр учун:  русча овоз → калит расм (эталонлар билан) → расмдан видео → лаб синхрони (гапираётган
@@ -2536,6 +2548,7 @@ from pathlib import Path
 import sound
 import visuals
 from dubbing import audio_duration, synthesize
+from fileutil import FFMPEG_TIMEOUT, PROBE_TIMEOUT
 from series_planner import Character, EpisodeScript, Line, Location, SeriesPlan, Shot
 
 logger = logging.getLogger(__name__)
@@ -2561,8 +2574,12 @@ FONT_CANDIDATES = [
 
 # ----------------------------- ffmpeg ёрдамчилари -----------------------------
 
-def _run(cmd: list[str], cwd: Path | None = None) -> None:
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+def _run(cmd: list[str], cwd: Path | None = None, timeout: int = FFMPEG_TIMEOUT) -> None:
+    try:
+        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"ffmpeg {timeout} сонияда тугамади (тўхтатилди):\n{' '.join(cmd)[:2000]}")
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg хатоси:\n{' '.join(cmd)[:3000]}\n{result.stderr[-3000:]}")
 
@@ -2573,7 +2590,8 @@ def media_duration(path: Path) -> float:
 
 def has_audio(path: Path) -> bool:
     result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
-                             "stream=index", "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+                             "stream=index", "-of", "csv=p=0", str(path)], capture_output=True, text=True,
+                            timeout=PROBE_TIMEOUT)
     return bool(result.stdout.strip())
 
 
@@ -2968,7 +2986,8 @@ class EpisodeBuilder:
             fonts.mkdir(exist_ok=True)
             shutil.copy(file, fonts / Path(file).name)
             if not name:
-                probe = subprocess.run(["fc-scan", "--format", "%{family[0]}", file], capture_output=True, text=True) \
+                probe = subprocess.run(["fc-scan", "--format", "%{family[0]}", file], capture_output=True, text=True,
+                                       timeout=PROBE_TIMEOUT) \
                     if shutil.which("fc-scan") else None
                 name = (probe.stdout.strip() if probe and probe.returncode == 0 else "") or Path(file).stem
             return name, ":fontsdir=fonts"
@@ -3067,15 +3086,15 @@ class EpisodeBuilder:
             } for r in results],
         }
         (self.dir / "timeline.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-````
+`````
 
 ---
 
 ## 15. `telegram_sender.py`
 
-Telegram'га юбориш · ўзгармаган
+Telegram Bot API: хабар/видео юбориш, каналга жойлаш, ботга юборилган файлни олиш
 
-````python
+`````python
 """Telegram Bot API: хабар/видео юбориш, каналга жойлаш, ботга юборилган файлни олиш.
 
 TELEGRAM_CHAT_ID    — сизнинг (админ) чатингиз: олдиндан кўриш ва хабарлар учун
@@ -3219,15 +3238,15 @@ def download_file(file_id: str, dest: Path) -> Path:
             for part in r.iter_content(1 << 20):
                 f.write(part)
     return dest
-````
+`````
 
 ---
 
 ## 16. `video.py`
 
-Telegram учун сиқиш + эски трейлер режими видеоси · тузатилган
+Видео генерация (fal.ai орқали Kling ва бошқа моделлар) ва клипларни бирлаштириш
 
-````python
+`````python
 """Видео генерация (fal.ai орқали Kling ва бошқа моделлар) ва клипларни бирлаштириш."""
 
 from __future__ import annotations
@@ -3240,6 +3259,8 @@ import time
 from pathlib import Path
 
 import requests
+
+from fileutil import FFMPEG_TIMEOUT, PROBE_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -3437,14 +3458,14 @@ def concat_clips(clips: list[Path], out_path: Path) -> Path:
 
     # Клиплар бир моделдан бўлгани учун одатда тез нусхалаш (-c copy) етарли
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(out_path)]
-    first = subprocess.run(cmd, capture_output=True)
+    first = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT)
     if first.returncode != 0:
         # Биринчи уриниш нега йиқилганини логлаймиз, акс ҳолда сабаб йўқолади
         logger.warning("FFmpeg -c copy муваффақиятсиз: %s", first.stderr.decode("utf-8", "ignore")[-500:])
         # Формат фарқ қилса — қайта кодлаш
         cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out_path)]
-        res = subprocess.run(cmd, capture_output=True)
+        res = subprocess.run(cmd, capture_output=True, timeout=FFMPEG_TIMEOUT)
         if res.returncode != 0:
             raise RuntimeError(f"FFmpeg қайта кодлаш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
     list_file.unlink(missing_ok=True)
@@ -3463,7 +3484,7 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
         res = subprocess.run(
             ["ffmpeg", "-y", "-i", str(video), "-vf", scale, "-c:v", "libx264", *rate, "-preset", "medium",
              "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)],
-            capture_output=True,
+            capture_output=True, timeout=FFMPEG_TIMEOUT,
         )
         if res.returncode != 0:
             raise RuntimeError(f"FFmpeg сиқиш хатоси: {res.stderr.decode('utf-8', 'ignore')[-1500:]}")
@@ -3472,19 +3493,19 @@ def compress_for_telegram(video: Path, max_mb: int = 49) -> Path:
         # Ҳали ҳам катта — узунликка қараб битрейтни ҳисоблаймиз
         seconds = float(subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
-            capture_output=True, text=True).stdout.strip() or 60)
+            capture_output=True, text=True, timeout=PROBE_TIMEOUT).stdout.strip() or 60)
         kbps = int(max_mb * 8 * 1024 * 0.9 / seconds) - 128
         rate = ["-b:v", f"{max(300, kbps)}k", "-maxrate", f"{max(300, kbps)}k", "-bufsize", f"{2 * max(300, kbps)}k"]
     return out
-````
+`````
 
 ---
 
 ## 17. `check_script.py`
 
-Сценарий текшируви · тузатилган
+Сценарий текшируви: кетма-кет такрорланган сўзлар, бир хил репликалар ва кўп учрайдиган иборалар
 
-````python
+`````python
 """Сценарий текшируви: кетма-кет такрорланган сўзлар, бир хил репликалар ва кўп учрайдиган иборалар.
 
 Ишлатиш:
@@ -3582,15 +3603,143 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-````
+`````
 
 ---
 
-## 18. `main.py`
+## 18. `make_full_code.py`
 
-Эски трейлер режими (сериалга алоқаси йўқ) · тузатилган
+FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун)
 
-````python
+`````python
+"""FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун).
+
+Ишлатиш:
+    python make_full_code.py          # FULL_CODE.md ни охирги коммит асосида қайта ясайди
+    python make_full_code.py --check  # FULL_CODE.md эскирганми — текширади (эскирган бўлса, чиқиш коди 1)
+
+GitHub'да `.github/workflows/full-code.yml` бу скриптни ҳар push'дан кейин ишга туширади ва FULL_CODE.md
+ўзгарган бўлса, уни автоматик коммит қилади. Файл фақат коммит қилинган кодга қараб ясалади, шунинг учун
+бир хил код учун ҳар доим бир хил FULL_CODE.md чиқади.
+"""
+
+from __future__ import annotations
+
+import ast
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+OUT_NAME = "FULL_CODE.md"
+SKIP = {OUT_NAME, ".gitignore"}
+
+# Ўқиш учун қулай тартиб; рўйхатда йўқ янги файллар охирига алфавит бўйича қўшилади
+ORDER = [
+    "README.md", "requirements.txt", ".env.example",
+    "serial.py", "series_planner.py", "claude_client.py", "fileutil.py",
+    "book_sources.py", "book_reader.py", "visuals.py", "fal_api.py", "dubbing.py", "sound.py",
+    "episode_builder.py", "telegram_sender.py", "video.py", "check_script.py", "make_full_code.py",
+    "main.py", "scenario.py",
+]
+DESCRIPTIONS = {
+    "README.md": "Қўлланма: ўрнатиш ва ишлатиш",
+    "requirements.txt": "Керакли Python кутубхоналари",
+    ".env.example": "Калитлар ва созламалар намунаси",
+}
+LANGS = {".py": "python", ".md": "markdown", ".txt": "text", ".example": "bash", ".yml": "yaml", ".json": "json"}
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True, encoding="utf-8",
+                          check=True).stdout
+
+
+def committed_files() -> list[str]:
+    names = [n for n in git("ls-tree", "--name-only", "HEAD", "./").splitlines() if n]
+    names = [Path(n).name for n in names]
+    files = [n for n in names if n not in SKIP and not git("cat-file", "-t", f"HEAD:./{n}").startswith("tree")]
+    known = [n for n in ORDER if n in files]
+    return known + sorted(n for n in files if n not in ORDER)
+
+
+def describe(name: str, text: str) -> str:
+    if name in DESCRIPTIONS:
+        return DESCRIPTIONS[name]
+    if name.endswith(".py"):
+        try:
+            doc = ast.get_docstring(ast.parse(text)) or ""
+        except SyntaxError:
+            doc = ""
+        if doc:
+            return doc.strip().splitlines()[0].rstrip(".")
+    return ""
+
+
+def build() -> str:
+    version = git("log", "-1", "--format=%h|%cs", "--", ".", f":(exclude){OUT_NAME}").strip()
+    sha, date = version.split("|") if version else ("—", "—")
+    files = committed_files()
+    contents = {n: git("show", f"HEAD:./{n}") for n in files}
+    fence = "````"
+    while any(fence in c for c in contents.values()):
+        fence += "`"
+
+    lines = [
+        "# book_to_video — тўлиқ код",
+        "",
+        "> Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.",
+        "",
+        f"Код версияси: коммит `{sha}` ({date}). Файллар: {len(files)} та, жами "
+        f"{sum(c.count(chr(10)) for c in contents.values())} қатор.",
+        "",
+        "| № | Файл | Вазифаси | Қатор | Охирги ўзгариш |",
+        "|---|---|---|---|---|",
+    ]
+    for i, name in enumerate(files, 1):
+        last = git("log", "-1", "--format=%h (%cs)", "--", name).strip() or "—"
+        lines.append(f"| {i} | `{name}` | {describe(name, contents[name])} | {contents[name].count(chr(10))} | {last} |")
+    lines.append("")
+    for i, name in enumerate(files, 1):
+        lang = LANGS.get(Path(name).suffix, "")
+        lines += ["---", "", f"## {i}. `{name}`", ""]
+        if describe(name, contents[name]):
+            lines += [describe(name, contents[name]), ""]
+        lines += [f"{fence}{lang}", contents[name].rstrip("\n"), fence, ""]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    out = HERE / OUT_NAME
+    text = build()
+    current = out.read_text(encoding="utf-8") if out.exists() else ""
+    if "--check" in sys.argv:
+        if current != text:
+            print(f"{OUT_NAME} эскирган: python make_full_code.py ни ишга туширинг")
+            return 1
+        print(f"{OUT_NAME} янги")
+        return 0
+    if git("status", "--porcelain", "--", ".", f":(exclude){OUT_NAME}").strip():
+        print("⚠️  Коммит қилинмаган ўзгаришлар бор — улар FULL_CODE.md га кирмайди (фақат охирги коммит олинади).")
+    if current == text:
+        print(f"{OUT_NAME} ўзгармади")
+        return 0
+    out.write_text(text, encoding="utf-8")
+    print(f"✓ {OUT_NAME} янгиланди")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+`````
+
+---
+
+## 19. `main.py`
+
+Китоб → Claude сценарий → видео клиплар → трейлер → Telegram
+
+`````python
 """Китоб → Claude сценарий → видео клиплар → трейлер → Telegram
 
 Ишлатиш:
@@ -3705,15 +3854,15 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-````
+`````
 
 ---
 
-## 19. `scenario.py`
+## 20. `scenario.py`
 
-Эски трейлер режими сценарийси (сериалга алоқаси йўқ) · тузатилган
+Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш
 
-````python
+`````python
 """Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш."""
 
 from __future__ import annotations
@@ -3807,4 +3956,4 @@ def create_trailer_script(book_text: str, num_scenes: int = 6, extra_wishes: str
     for scene in script.scenes:
         scene.duration_seconds = 10 if scene.duration_seconds >= 8 else 5
     return script
-````
+`````
