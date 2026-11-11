@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `9d8bb8a` (2026-11-10). Файллар: 20 та, жами 3839 қатор.
+Код версияси: коммит `6108207` (2026-11-11). Файллар: 20 та, жами 3841 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -16,7 +16,7 @@
 | 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | e5d276a (2026-11-10) |
 | 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | e5d276a (2026-11-10) |
 | 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 246 | 7a48e56 (2026-11-10) |
-| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 428 | 7a48e56 (2026-11-10) |
+| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 430 | 6108207 (2026-11-11) |
 | 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | e5d276a (2026-11-10) |
 | 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | e5d276a (2026-11-10) |
 | 14 | `episode_builder.py` | Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун | 571 | e5d276a (2026-11-10) |
@@ -1993,7 +1993,9 @@ def upload(path: Path) -> str:
         hit = read_json_cache(_UPLOADS, {}).get(digest)
     if hit and time.time() - hit.get("at", 0) < UPLOAD_MAX_AGE:
         return hit["url"]
-    url = _with_retry(lambda: _client().upload_file(path), f"юклаш {path.name}")
+    # fal GCS омборини биринчи синаймиз (видео ва бошқа файллар учун), хато бўлса fal_v3 га қайтамиз
+    url = _with_retry(lambda: _client().upload_file(path, repository="fal", fallback_repository="fal_v3"),
+                      f"юклаш {path.name}")
     with _LOCK:
         cache = read_json_cache(_UPLOADS, {})
         cache[digest] = {"url": url, "at": time.time()}
