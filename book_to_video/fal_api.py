@@ -67,7 +67,9 @@ def upload(path: Path) -> str:
         hit = read_json_cache(_UPLOADS, {}).get(digest)
     if hit and time.time() - hit.get("at", 0) < UPLOAD_MAX_AGE:
         return hit["url"]
-    url = _with_retry(lambda: _client().upload_file(path), f"юклаш {path.name}")
+    # fal GCS омборини биринчи синаймиз (видео ва бошқа файллар учун), хато бўлса fal_v3 га қайтамиз
+    url = _with_retry(lambda: _client().upload_file(path, repository="fal", fallback_repository="fal_v3"),
+                      f"юклаш {path.name}")
     with _LOCK:
         cache = read_json_cache(_UPLOADS, {})
         cache[digest] = {"url": url, "at": time.time()}
