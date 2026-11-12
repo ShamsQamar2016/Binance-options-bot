@@ -127,7 +127,8 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
         f"World: {plan.country}, {plan.era}. {plan.setting}",
         f"Style: {plan.visual_style}. Natural skin texture, realistic anatomy and hands, motivated cinematic "
         "lighting, shallow depth of field.",
-        "Composition: vertical frame, main subject near the center, nothing important in the bottom quarter.",
+        "Composition: one single continuous full-frame scene, vertical 9:16, main subject near the center. "
+        "No panels, no split screen, no collage, no inset pictures, no separate image in any part of the frame.",
         NO_TEXT,
     ]
     return "\n".join(lines)
