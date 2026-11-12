@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `6108207` (2026-11-11). Файллар: 20 та, жами 3841 қатор.
+Код версияси: коммит `636b67c` (2026-11-12). Файллар: 20 та, жами 3842 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -15,7 +15,7 @@
 | 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | e5d276a (2026-11-10) |
 | 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | e5d276a (2026-11-10) |
 | 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | e5d276a (2026-11-10) |
-| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 246 | 7a48e56 (2026-11-10) |
+| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 247 | 636b67c (2026-11-12) |
 | 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 430 | 6108207 (2026-11-11) |
 | 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | e5d276a (2026-11-10) |
 | 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | e5d276a (2026-11-10) |
@@ -1798,7 +1798,8 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
         f"World: {plan.country}, {plan.era}. {plan.setting}",
         f"Style: {plan.visual_style}. Natural skin texture, realistic anatomy and hands, motivated cinematic "
         "lighting, shallow depth of field.",
-        "Composition: vertical frame, main subject near the center, nothing important in the bottom quarter.",
+        "Composition: one single continuous full-frame scene, vertical 9:16, main subject near the center. "
+        "No panels, no split screen, no collage, no inset pictures, no separate image in any part of the frame.",
         NO_TEXT,
     ]
     return "\n".join(lines)
