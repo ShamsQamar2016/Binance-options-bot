@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `d245757` (2026-11-13). Файллар: 21 та, жами 4136 қатор.
+Код версияси: коммит `b5ffd22` (2026-11-13). Файллар: 21 та, жами 4173 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 287 | d245757 (2026-11-13) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 324 | b5ffd22 (2026-11-13) |
 
 ---
 
@@ -4094,6 +4094,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -4146,11 +4147,46 @@ def is_transient(output: str) -> bool:
     return any(re.search(p, output) for p in TRANSIENT)
 
 
-def run_serial(args: list[str], timeout: int = 4 * 3600) -> tuple[int, str]:
-    """serial.py буйругини ишга туширади; (код, чиқиш охирги 6000 белгиси)."""
-    proc = subprocess.run([sys.executable, "serial.py", *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout)
-    out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+STALL_SECONDS = int(os.environ.get("BOT_STALL_MINUTES", "15")) * 60
+
+
+def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = "") -> tuple[int, str]:
+    """serial.py буйругини ишга туширади; (код, чиқиш охирги 6000 белгиси).
+
+    say берилса: иш бошланганда бир марта «жараёнда» хабари, ва 15 дақиқа жим турса бир марта огоҳлантириш.
+    Қайта жонланса, хабар йўқ — спам бўлмайди.
+    """
+    proc = subprocess.Popen([sys.executable, "serial.py", *args], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
+    lines: list[str] = []
+    last = [time.time()]
+
+    def reader() -> None:
+        for line in proc.stdout:
+            lines.append(line)
+            last[0] = time.time()
+
+    threading.Thread(target=reader, daemon=True).start()
+    if say and label:
+        say(f"▶️ {label} жараёнда. Тугагач ёки тўхтаганда хабар бераман.")
+    start = time.time()
+    alerted = False
+    while True:
+        try:
+            proc.wait(timeout=30)
+            break
+        except subprocess.TimeoutExpired:
+            if time.time() - start > timeout:
+                proc.kill()
+                raise
+            quiet = time.time() - last[0]
+            if quiet > STALL_SECONDS and not alerted and say:
+                alerted = True
+                say(f"⏸ {label or 'Иш'}: {max(1, int(quiet // 60))} дақиқадан бери янги хабар йўқ. "
+                    "Тўхтаб қолган бўлиши мумкин; CMD ойнасини текширинг.")
+            elif quiet <= STALL_SECONDS:
+                alerted = False
+    out = "".join(lines)
     logging.info("serial.py %s → код %s", " ".join(args), proc.returncode)
     return proc.returncode, out[-6000:]
 
@@ -4240,7 +4276,8 @@ class Bot:
                 self.say("Режа топилмади. /mavzu ёки /plan билан тузинг.")
         elif cmd == "/storyboard":
             n = int(arg) if arg.isdigit() else 1
-            code, out = run_serial(["storyboard", "--serial", self.active, "--episode", str(n), "--no-telegram"])
+            code, out = run_serial(["storyboard", "--serial", self.active, "--episode", str(n), "--no-telegram"],
+                                   say=self.say, label=f"{n}-қисм раскадровкаси")
             if code != 0:
                 return self.say(f"❌ Раскадровка тугамади: {explain(out)}")
             sheet = ROOT / self.active / f"episode_{n:02d}" / "storyboard.jpg"
@@ -4283,9 +4320,8 @@ class Bot:
         if action in ("plan_topic", "plan_book"):
             name, src = args
             flag = ["--topic", src] if action == "plan_topic" else ["--book", src]
-            self.say("⏳ Режа тузилмоқда... (бир неча дақиқа)")
             code, out = run_serial(["plan", *flag, "--name", name, "--episodes", str(EPISODES),
-                                    "--minutes", MINUTES, "--no-telegram"])
+                                    "--minutes", MINUTES, "--no-telegram"], say=self.say, label="Режа тузиш")
             if code != 0:
                 return self.say(f"❌ Режа тузилмади: {explain(out)}")
             self.active = name
@@ -4299,8 +4335,9 @@ class Bot:
 
     def produce(self, n: int, attempts: int = 4) -> None:
         for attempt in range(1, attempts + 1):
-            self.say(f"⏳ {n}-қисм йиғилмоқда (уриниш {attempt}/{attempts}). Тугагач хабар бераман.")
-            code, out = run_serial(["produce", "--serial", self.active, "--episode", str(n), "--no-telegram"])
+            label = f"{n}-қисм йиғиш (уриниш {attempt}/{attempts})"
+            code, out = run_serial(["produce", "--serial", self.active, "--episode", str(n), "--no-telegram"],
+                                   say=self.say, label=label)
             if code == 0:
                 self.say(f"✅ {n}-қисм тайёр: output\\serials\\{self.active}\\episode_{n:02d}\\episode.mp4\n"
                          "Каналга чиқариш учун /publish.")
