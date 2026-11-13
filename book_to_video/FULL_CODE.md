@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `d080c40` (2026-11-13). Файллар: 21 та, жами 4261 қатор.
+Код версияси: коммит `5329588` (2026-11-13). Файллар: 21 та, жами 4274 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 412 | d080c40 (2026-11-13) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 425 | 5329588 (2026-11-13) |
 
 ---
 
@@ -4258,6 +4258,7 @@ class Bot:
         self.active = serial
         self.pending: tuple | None = None        # (иш, аргументлар, тугаш вақти)
         self.waiting_book: tuple | None = None   # (сериал номи, тугаш вақти)
+        self.awaiting: str | None = None         # тугмадан кейин қайси буйрук аргумент кутяпти
         self.offset: int | None = None
 
     # ---- Telegram ----
@@ -4279,6 +4280,12 @@ class Bot:
         if msg.get("document"):
             return self.on_document(msg["document"])
         text = (msg.get("text") or "").strip()
+        if text and not text.startswith("/") and self.awaiting:
+            # тугмадан кейин сўралган маълумот (рақамлар, матн) — буйруқ сифатида бажарилади
+            text = f"/{self.awaiting} {text}"
+            self.awaiting = None
+        elif text.startswith("/"):
+            self.awaiting = None
         cmd, _, arg = text.partition(" ")
         cmd = cmd.lower().split("@")[0]
         arg = arg.strip()
@@ -4300,7 +4307,8 @@ class Bot:
         elif cmd == "/mavzu":
             name, _, topic = arg.partition(" ")
             if not name or not topic.strip():
-                return self.say("Ёзинг: /mavzu ИСМ МАВЗУ\nМас: /mavzu kizil_botqoq детектив, 1920 Лондон")
+                self.awaiting = "mavzu"
+                return self.say("Ном ва мавзуни ёзинг: ИСМ МАВЗУ\nМас: kizil_botqoq детектив, 1920 Лондон")
             self.pending = ("plan_topic", (name, topic.strip()), now + CONFIRM_WINDOW)
             self.say(f"Мавзу асосида «{name}» режасини тузаймиз (Claude'га пул кетади, тахминан $1–3).\n"
                      "Тасдиқ учун /ha ёзинг (10 дақиқа).")
@@ -4309,7 +4317,8 @@ class Bot:
             self.say(f"«{arg}» учун китоб файлини юборинг (PDF, EPUB, FB2, DOCX, TXT; 20 МБ гача).\n"
                      "Муаллифи 70 йилдан олдин вафот этган китоб бўлсин.")
         elif cmd == "/plan":
-            self.say("Ёзинг: /plan ИСМ")
+            self.awaiting = "plan"
+            self.say("Сериал номини ёзинг (мас. wuthering_full)")
         elif cmd == "/plan_show":
             try:
                 self.say(plan_text(self.active))
@@ -4320,7 +4329,8 @@ class Bot:
         elif cmd == "/fix":
             parts = arg.split(maxsplit=2)
             if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
-                return self.say("Ёзинг: /fix ҚИСМ КАДР ИЗОҲ\nМас: /fix 2 9 одам тўлиқ бўйда кўринсин, оёқлари полда")
+                self.awaiting = "fix"
+                return self.say("Қисм ва кадрни ёзинг: ҚИСМ КАДР ИЗОҲ\nМас: 2 9 одам тўлиқ бўйда кўринсин, оёқлари полда")
             try:
                 self.say(fix_shot(self.active, int(parts[0]), int(parts[1]), parts[2]))
             except Exception as exc:
@@ -4329,7 +4339,8 @@ class Bot:
         elif cmd == "/redo":
             parts = arg.split()
             if len(parts) != 2 or not parts[0].isdigit():
-                return self.say("Ёзинг: /redo ҚИСМ КАДРЛАР\nМас: /redo 2 5,12")
+                self.awaiting = "redo"
+                return self.say("Қисм ва кадрларни ёзинг: ҚИСМ КАДРЛАР\nМас: 2 5,12")
             n = int(parts[0])
             nums = [int(x) for x in re.findall(r"\d+", parts[1])]
             clips = ROOT / self.active / f"episode_{n:02d}" / "clips"
@@ -4358,6 +4369,8 @@ class Bot:
         keyboard = [["/status", "/plan_show", "/help"],
                     ["/storyboard 1", "/storyboard 2"],
                     ["/produce 1", "/produce 2"],
+                    ["/fix", "/redo"],
+                    ["/mavzu", "/plan"],
                     ["/publish", "/ha"]]
         commands = [("status", "Қисмлар ҳолати"), ("plan_show", "Режани кўриш"),
                     ("storyboard", "Раскадровка (расм)"), ("produce", "Видеога йиғиш"),
