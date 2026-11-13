@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `b5ffd22` (2026-11-13). Файллар: 21 та, жами 4173 қатор.
+Код версияси: коммит `cae7bfa` (2026-11-13). Файллар: 21 та, жами 4191 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 324 | b5ffd22 (2026-11-13) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 342 | cae7bfa (2026-11-13) |
 
 ---
 
@@ -4249,6 +4249,7 @@ class Bot:
             self.say("/status — ҳолат\n/use ИСМ — сериални танлаш\n"
                      "/mavzu ИСМ МАВЗУ — мавзу асосида режа\n/plan ИСМ — китоб файлидан режа\n"
                      "/plan_show — режа\n/storyboard [N] — раскадровка расм билан\n"
+                     "/redo N 5,12 — ёқмаган кадрларни қайта ясаш\n"
                      "/produce [N] — видеога йиғиш\n/publish — каналга чиқариш\n/ha — тасдиқ")
         elif cmd == "/status":
             _, out = run_serial(["status", "--serial", self.active])
@@ -4275,18 +4276,22 @@ class Bot:
             except FileNotFoundError:
                 self.say("Режа топилмади. /mavzu ёки /plan билан тузинг.")
         elif cmd == "/storyboard":
-            n = int(arg) if arg.isdigit() else 1
-            code, out = run_serial(["storyboard", "--serial", self.active, "--episode", str(n), "--no-telegram"],
-                                   say=self.say, label=f"{n}-қисм раскадровкаси")
-            if code != 0:
-                return self.say(f"❌ Раскадровка тугамади: {explain(out)}")
-            sheet = ROOT / self.active / f"episode_{n:02d}" / "storyboard.jpg"
-            try:
-                tg.send_photo(sheet, caption=f"🎞 {n}-қисм раскадровкаси", chat_id=self.chat)
-            except Exception as exc:
-                self.say(f"Расмни юбориш мумкин эмас: {exc}")
-            self.say(script_text(self.active, n))
-            self.say("Ёқмаган кадр бўлса, ёзинг. Ҳаммаси маъқул бўлса: /produce " + str(n))
+            self.show_storyboard(int(arg) if arg.isdigit() else 1)
+        elif cmd == "/redo":
+            parts = arg.split()
+            if len(parts) != 2 or not parts[0].isdigit():
+                return self.say("Ёзинг: /redo ҚИСМ КАДРЛАР\nМас: /redo 2 5,12")
+            n = int(parts[0])
+            nums = [int(x) for x in re.findall(r"\d+", parts[1])]
+            clips = ROOT / self.active / f"episode_{n:02d}" / "clips"
+            removed = 0
+            for k in nums:
+                for pattern in (f"shot_{k:02d}.png", f"shot_{k:02d}.mp4", f"shot_{k:02d}_ls_*.mp4"):
+                    for f in clips.glob(pattern):
+                        f.unlink()
+                        removed += 1
+            self.say(f"Ўчирилди: {removed} файл ({', '.join(map(str, nums))}-кадрлар). Раскадровка қайта ясалади.")
+            self.show_storyboard(n)
         elif cmd == "/produce":
             n = int(arg) if arg.isdigit() else 1
             self.pending = ("produce", (n,), now + CONFIRM_WINDOW)
@@ -4298,6 +4303,19 @@ class Bot:
             self.confirm()
         else:
             self.say("Номаълум буйруқ. /help")
+
+    def show_storyboard(self, n: int) -> None:
+        code, out = run_serial(["storyboard", "--serial", self.active, "--episode", str(n), "--no-telegram"],
+                               say=self.say, label=f"{n}-қисм раскадровкаси")
+        if code != 0:
+            return self.say(f"❌ Раскадровка тугамади: {explain(out)}")
+        sheet = ROOT / self.active / f"episode_{n:02d}" / "storyboard.jpg"
+        try:
+            tg.send_photo(sheet, caption=f"🎞 {n}-қисм раскадровкаси", chat_id=self.chat)
+        except Exception as exc:
+            self.say(f"Расмни юбориш мумкин эмас: {exc}")
+        self.say(script_text(self.active, n))
+        self.say(f"Ёқмаган кадрлар: /redo {n} 5,12\nМаъқул бўлса: /produce {n}")
 
     def on_document(self, doc: dict) -> None:
         if not self.waiting_book or time.time() > self.waiting_book[1]:
