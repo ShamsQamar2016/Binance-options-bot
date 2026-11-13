@@ -32,8 +32,11 @@ import threading
 import time
 from pathlib import Path
 
+from typing import Literal
+
 import requests
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 import telegram_sender as tg
 from book_sources import safe_filename
@@ -146,6 +149,42 @@ def script_text(serial: str, n: int) -> str:
     return "\n".join(lines)
 
 
+FIX_SYSTEM = """Ты — ассистент режиссёра по раскадровке. Тебе дан один кадр сериала (JSON) и короткая
+правка от режиссёра на русском. Перепиши ТОЛЬКО поля shot_type, image_prompt и motion_prompt так,
+чтобы правка была выполнена. Правила:
+- image_prompt и motion_prompt — по-английски, конкретно: кто где, поза, план, свет. Персонажи только
+  как [id] (например [hareton]); не придумывай новых персонажей.
+- Вертикальный кадр 9:16, главное в центре. Без текста и надписей на экране.
+- Если правка про тело или ноги — укажи полный план (full body / head to boots) и положение ног на полу.
+- Не добавляй возраст, детей, раздевание или насилие; сохрани стиль и персонажей сцены."""
+
+
+class ShotFix(BaseModel):
+    shot_type: Literal["establishing", "wide", "medium", "medium_close_up", "close_up",
+                       "extreme_close_up", "over_the_shoulder", "insert"]
+    image_prompt: str
+    motion_prompt: str
+
+
+def fix_shot(serial: str, episode: int, shot_no: int, instruction: str) -> str:
+    """Кадр тавсифини Claude орқали тузатади; сақлашдан олдин захира нусха ёзади."""
+    from claude_client import structured
+    path = ROOT / serial / f"episode_{episode:02d}" / "script.json"
+    raw = path.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    shot = next((s for s in data["shots"] if s["number"] == shot_no), None)
+    if shot is None:
+        raise ValueError(f"{shot_no}-кадр топилмади")
+    fix = structured(FIX_SYSTEM, f"Кадр:\n{json.dumps(shot, ensure_ascii=False)}\n\nПравка: {instruction}",
+                     ShotFix, effort="low", max_tokens=4000)
+    path.with_name("script.json.bak").write_text(raw, encoding="utf-8")
+    shot["shot_type"] = fix.shot_type
+    shot["image_prompt"] = fix.image_prompt
+    shot["motion_prompt"] = fix.motion_prompt
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return f"{shot_no}-кадр янгиланди [{fix.shot_type}]. Захира: script.json.bak. Эндиликда: /redo {episode} {shot_no}"
+
+
 class Bot:
     def __init__(self, token: str, chat: str, serial: str):
         self.token = token
@@ -183,6 +222,7 @@ class Bot:
             self.say("/status — ҳолат\n/use ИСМ — сериални танлаш\n"
                      "/mavzu ИСМ МАВЗУ — мавзу асосида режа\n/plan ИСМ — китоб файлидан режа\n"
                      "/plan_show — режа\n/storyboard [N] — раскадровка расм билан\n"
+                     "/fix N КАДР ИЗОҲ — кадр тавсифини ўзгартириш\n"
                      "/redo N 5,12 — ёқмаган кадрларни қайта ясаш\n"
                      "/produce [N] — видеога йиғиш\n/publish — каналга чиқариш\n/ha — тасдиқ")
         elif cmd == "/status":
@@ -211,6 +251,15 @@ class Bot:
                 self.say("Режа топилмади. /mavzu ёки /plan билан тузинг.")
         elif cmd == "/storyboard":
             self.show_storyboard(int(arg) if arg.isdigit() else 1)
+        elif cmd == "/fix":
+            parts = arg.split(maxsplit=2)
+            if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit():
+                return self.say("Ёзинг: /fix ҚИСМ КАДР ИЗОҲ\nМас: /fix 2 9 одам тўлиқ бўйда кўринсин, оёқлари полда")
+            try:
+                self.say(fix_shot(self.active, int(parts[0]), int(parts[1]), parts[2]))
+            except Exception as exc:
+                logging.exception("fix хатоси")
+                self.say(f"❌ Тузатиш бўлмади: {exc}")
         elif cmd == "/redo":
             parts = arg.split()
             if len(parts) != 2 or not parts[0].isdigit():
