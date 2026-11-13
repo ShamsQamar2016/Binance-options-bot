@@ -134,25 +134,31 @@ def cmd_plan(args) -> None:
     folder = ROOT / args.name
     folder.mkdir(parents=True, exist_ok=True)
 
-    if args.book:
-        book_path = Path(args.book)
-    elif args.url:
-        print("⬇️  Китоб юклаб олинмоқда...")
-        book_path = download_from_url(args.url, folder)
+    wishes = args.wishes
+    if args.topic:
+        text = args.topic
+        segments = [args.topic]
+        print(f"💡 Мавзу: {len(text)} белги")
+        wishes = ("Асл китоб йўқ: берилган мавзу асосида оригинал ҳикоя ёз. " + wishes).strip()
     else:
-        print("⬇️  Telegram ботга юборилган китоб олинмоқда...")
-        book_path = download_from_telegram(folder)
-
-    text = load_text(book_path)
-    segments = make_segments(text)
-    print(f"📖 {book_path.name}: {len(text):,} белги, {len(segments)} бўлак")
+        if args.book:
+            book_path = Path(args.book)
+        elif args.url:
+            print("⬇️  Китоб юклаб олинмоқда...")
+            book_path = download_from_url(args.url, folder)
+        else:
+            print("⬇️  Telegram ботга юборилган китоб олинмоқда...")
+            book_path = download_from_telegram(folder)
+        text = load_text(book_path)
+        segments = make_segments(text)
+        print(f"📖 {book_path.name}: {len(text):,} белги, {len(segments)} бўлак")
     write_text_atomic(folder / "segments.json", json.dumps(segments, ensure_ascii=False))
     write_text_atomic(folder / "settings.json", json.dumps({
         "minutes": args.minutes, "music": args.music,
     }, ensure_ascii=False, indent=2))
 
     print("🤖 Claude бутун китобни ўқиб, сериал режасини тузмоқда (бир неча дақиқа)...")
-    plan = plan_series(segments, args.minutes, args.episodes, args.wishes)
+    plan = plan_series(segments, args.minutes, args.episodes, wishes)
     write_text_atomic(folder / "plan.json", plan.model_dump_json(indent=2))
 
     serial = Serial(folder)
@@ -476,6 +482,7 @@ def main() -> int:
     src.add_argument("--book", help="Китоб файли (.pdf .docx .fb2 .epub .txt)")
     src.add_argument("--url", help="Китоб файлига тўғридан-тўғри ҳавола")
     src.add_argument("--from-telegram", action="store_true", help="Ботга юборилган охирги файл")
+    src.add_argument("--topic", help="Китобсиз: мавзу матни, мас. 'детектив, 1920 Лондон'")
     p.add_argument("--name", required=True, help="Сериал папкаси номи (лотинча), мас. snow_country")
     p.add_argument("--minutes", type=float, default=2.0, help="Ҳар қисм узунлиги, дақиқа (стандарт 2, кўпи билан 2.8)")
     p.add_argument("--episodes", type=int, help="Қисмлар сони (бермасангиз Claude ўзи танлайди)")
