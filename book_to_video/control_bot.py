@@ -313,10 +313,10 @@ class Bot:
         try:
             requests.post(f"https://api.telegram.org/bot{self.token}/setMyCommands",
                           json={"commands": [{"command": c, "description": d} for c, d in commands]}, timeout=20)
+            # Экран тагидаги тугмалар панели ўчирилади; буйруқлар «Menyu» (/ менюси) орқали қолади
             requests.post(f"https://api.telegram.org/bot{self.token}/sendMessage",
-                          json={"chat_id": self.chat, "text": "Тугмалар тайёр. Керакли буйруқни босинг.",
-                                "reply_markup": {"keyboard": keyboard, "resize_keyboard": True,
-                                                 "is_persistent": True}}, timeout=20)
+                          json={"chat_id": self.chat, "text": "Буйруқлар «Menyu» тугмасида.",
+                                "reply_markup": {"remove_keyboard": True}}, timeout=20)
         except requests.RequestException as exc:
             logging.warning("меню юбориш хатоси: %s", exc)
 
