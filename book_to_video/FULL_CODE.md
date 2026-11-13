@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `5329588` (2026-11-13). Файллар: 21 та, жами 4274 қатор.
+Код версияси: коммит `b15deab` (2026-11-13). Файллар: 21 та, жами 4274 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 425 | 5329588 (2026-11-13) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 425 | b15deab (2026-11-13) |
 
 ---
 
@@ -4379,10 +4379,10 @@ class Bot:
         try:
             requests.post(f"https://api.telegram.org/bot{self.token}/setMyCommands",
                           json={"commands": [{"command": c, "description": d} for c, d in commands]}, timeout=20)
+            # Экран тагидаги тугмалар панели ўчирилади; буйруқлар «Menyu» (/ менюси) орқали қолади
             requests.post(f"https://api.telegram.org/bot{self.token}/sendMessage",
-                          json={"chat_id": self.chat, "text": "Тугмалар тайёр. Керакли буйруқни босинг.",
-                                "reply_markup": {"keyboard": keyboard, "resize_keyboard": True,
-                                                 "is_persistent": True}}, timeout=20)
+                          json={"chat_id": self.chat, "text": "Буйруқлар «Menyu» тугмасида.",
+                                "reply_markup": {"remove_keyboard": True}}, timeout=20)
         except requests.RequestException as exc:
             logging.warning("меню юбориш хатоси: %s", exc)
 
