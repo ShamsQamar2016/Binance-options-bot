@@ -287,6 +287,26 @@ class Bot:
         else:
             self.say("Номаълум буйруқ. /help")
 
+    def show_menu(self) -> None:
+        """Чат остида тугмалар ва «/» менюси. Тугмалар буйруқни ўзи юборади."""
+        keyboard = [["/status", "/plan_show", "/help"],
+                    ["/storyboard 1", "/storyboard 2"],
+                    ["/produce 1", "/produce 2"],
+                    ["/publish", "/ha"]]
+        commands = [("status", "Қисмлар ҳолати"), ("plan_show", "Режани кўриш"),
+                    ("storyboard", "Раскадровка (расм)"), ("produce", "Видеога йиғиш"),
+                    ("fix", "Кадр тавсифини тузатиш"), ("redo", "Кадрларни қайта ясаш"),
+                    ("publish", "Каналга чиқариш"), ("ha", "Тасдиқ"), ("help", "Рўйхат")]
+        try:
+            requests.post(f"https://api.telegram.org/bot{self.token}/setMyCommands",
+                          json={"commands": [{"command": c, "description": d} for c, d in commands]}, timeout=20)
+            requests.post(f"https://api.telegram.org/bot{self.token}/sendMessage",
+                          json={"chat_id": self.chat, "text": "Тугмалар тайёр. Керакли буйруқни босинг.",
+                                "reply_markup": {"keyboard": keyboard, "resize_keyboard": True,
+                                                 "is_persistent": True}}, timeout=20)
+        except requests.RequestException as exc:
+            logging.warning("меню юбориш хатоси: %s", exc)
+
     def show_storyboard(self, n: int) -> None:
         code, out = run_serial(["storyboard", "--serial", self.active, "--episode", str(n), "--no-telegram"],
                                say=self.say, label=f"{n}-қисм раскадровкаси")
@@ -365,6 +385,7 @@ def main() -> int:
         raise SystemExit("TELEGRAM_BOT_TOKEN ва TELEGRAM_CHAT_ID .env да бўлиши керак")
     bot = Bot(token, chat, args.serial)
     bot.say(f"🤖 Бот ишга тушди. Фаол сериал: {args.serial}. Буйруқлар: /help")
+    bot.show_menu()
 
     while True:
         try:
