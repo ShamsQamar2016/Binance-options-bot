@@ -138,6 +138,15 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
     return proc.returncode, out[-6000:]
 
 
+def active_line(serial: str) -> str:
+    """«Фаол сериал: Нефертити (nefertiti)» — режа номи бўлмаса, папка номи."""
+    try:
+        p = json.loads((ROOT / serial / "plan.json").read_text(encoding="utf-8"))
+        return f"📺 Фаол сериал: {p.get('series_title', serial)} ({serial})"
+    except (OSError, ValueError):
+        return f"📺 Фаол сериал: {serial} (режа ҳали тузилмаган)"
+
+
 def plan_text(serial: str) -> str:
     p = json.loads((ROOT / serial / "plan.json").read_text(encoding="utf-8"))
     lines = [f"🎬 {p.get('series_title', '')}",
@@ -327,7 +336,7 @@ class Bot:
             self.say(out.strip() or "Маълумот йўқ")
         elif cmd == "/use" and arg:
             self.active = arg
-            self.say(f"Фаол сериал: {arg}")
+            self.say(active_line(arg))
         elif cmd == "/mavzu":
             name, _, topic = arg.partition(" ")
             if not name or not topic.strip():
@@ -494,7 +503,7 @@ def main() -> int:
     if not token or not chat:
         raise SystemExit("TELEGRAM_BOT_TOKEN ва TELEGRAM_CHAT_ID .env да бўлиши керак")
     bot = Bot(token, chat, args.serial)
-    bot.say(f"🤖 Бот ишга тушди. Фаол сериал: {args.serial}. Буйруқлар: /help")
+    bot.say(f"🤖 Бот ишга тушди.\n{active_line(args.serial)}\nБуйруқлар: /help")
     bot.show_menu()
 
     while True:
