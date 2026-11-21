@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `de741c9` (2026-11-21). Файллар: 22 та, жами 4476 қатор.
+Код версияси: коммит `49031bc` (2026-11-21). Файллар: 22 та, жами 4490 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -15,7 +15,7 @@
 | 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | e5d276a (2026-11-10) |
 | 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | e5d276a (2026-11-10) |
 | 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | e5d276a (2026-11-10) |
-| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 282 | de741c9 (2026-11-21) |
+| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 296 | 49031bc (2026-11-21) |
 | 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 433 | dece739 (2026-11-21) |
 | 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | e5d276a (2026-11-10) |
 | 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | e5d276a (2026-11-10) |
@@ -1708,9 +1708,11 @@ from fileutil import PROBE_TIMEOUT, temp_name
 from pydantic import BaseModel, Field
 
 from series_planner import Character, Location, SeriesPlan, Shot, pick_best_image
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
+W, H = 1080, 1920   # вертикал кадр (9:16)
 NO_TEXT = "No text, letters, captions, subtitles, logos, watermarks or borders."
 NEGATIVE = ("text, subtitles, captions, watermark, logo, cartoon, anime, illustration, CGI look, "
             "distorted face, deformed hands, extra fingers, extra people, morphing, flicker, blurry")
@@ -1822,34 +1824,46 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
     return "\n".join(lines)
 
 
-class _Orientation(BaseModel):
-    upright: bool = Field(description="true, если люди стоят вертикально относительно земли, кадр не повёрнут")
+class _Heads(BaseModel):
+    heads_point: Literal["up", "right", "left", "down"] = Field(
+        description="В какую сторону кадра направлены головы людей: up — вверх (нормально), right/left/down — боком или вниз")
 
 
-def _is_upright(path: Path) -> bool:
-    """Claude кадрни кўриб, ётиқ (90° ағдарилган) эмаслигини текширади. Хато бўлса — рўйхатга киритамиз."""
+def _heads_direction(path: Path) -> str:
+    """Claude кадрда одамлар бошлари қай томонга қараганини айтади. Хато бўлса — 'up' (ўзгаришсиз)."""
     from claude_client import structured
     content = [
-        {"type": "text", "text": "Этот кадр фильма: люди стоят вертикально относительно земли и изображение "
-                                 "не повёрнуто на 90 градусов? Ответь upright=false, если кадр ляжет набок."},
+        {"type": "text", "text": "На кадре — люди. В какую сторону направлены их головы относительно "
+                                 "верхнего края кадра: up, right, left или down?"},
         _image_block(_thumb(path)),
     ]
     try:
-        return structured("Ты — скрипт-супервайзер. Проверяешь ориентацию кадра.", content, _Orientation,
-                          effort="low", max_tokens=1000).upright
+        return structured("Ты — скрипт-супервайзер. Определяешь ориентацию кадра.", content, _Heads,
+                          effort="low", max_tokens=1000).heads_point
     except Exception as exc:
-        logger.warning("ориентация текширилмади (%s) — кадр қабул қилинади", exc)
-        return True
+        logger.warning("ориентация текширилмади (%s) — кадр ўзгаришсиз қолади", exc)
+        return "up"
 
 
-def make_keyframe(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]], out: Path, attempts: int = 3) -> Path:
-    """Калит расм. Ётиқ чиққан бўлса, янгидан ясайди (attempts гача)."""
-    for attempt in range(1, attempts + 1):
-        _make_keyframe_once(plan, shot, refs, out)
-        if _is_upright(out):
-            return out
-        print(f"       ↻ кадр {shot.number}: ётиқ чиқди, қайта ясалмоқда ({attempt}/{attempts})")
-        out.unlink(missing_ok=True)
+def _rotate_upright(path: Path, direction: str) -> None:
+    """Расмни айлантириб тик қилади (fal.ai га қайта сўров йўқ). Натижа 9:16 га кесилади, 1080×1920 га катталаштирилади."""
+    if direction == "up":
+        return
+    turn = {"right": "transpose=2", "left": "transpose=1", "down": "transpose=1,transpose=1"}[direction]
+    tmp = temp_name(path)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(path), "-vf",
+                    f"{turn},crop='min(iw,ih*9/16)':'min(ih,iw*16/9)',scale={W}:{H}",
+                    "-frames:v", "1", str(tmp)], check=True, timeout=PROBE_TIMEOUT)
+    os.replace(tmp, path)
+
+
+def make_keyframe(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]], out: Path) -> Path:
+    """Калит расм: бир марта ясалади; ётиқ бўлса, файлнинг ўзи айлантирилади (қўшимча пул йўқ)."""
+    _make_keyframe_once(plan, shot, refs, out)
+    direction = _heads_direction(out)
+    if direction != "up":
+        print(f"       ↻ кадр {shot.number}: ётиқ ({direction}), тўғриланмоқда")
+        _rotate_upright(out, direction)
     return out
 
 
