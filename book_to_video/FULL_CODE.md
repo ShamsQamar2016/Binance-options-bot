@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `154c726` (2026-11-21). Файллар: 22 та, жами 4501 қатор.
+Код версияси: коммит `0837d2b` (2026-11-21). Файллар: 22 та, жами 4510 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 527 | 8bf8d3f (2026-11-21) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 536 | 0837d2b (2026-11-21) |
 | 22 | `ledger.py` | Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да | 69 | dece739 (2026-11-21) |
 
 ---
@@ -4261,6 +4261,15 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
     return proc.returncode, out[-6000:]
 
 
+def active_line(serial: str) -> str:
+    """«Фаол сериал: Нефертити (nefertiti)» — режа номи бўлмаса, папка номи."""
+    try:
+        p = json.loads((ROOT / serial / "plan.json").read_text(encoding="utf-8"))
+        return f"📺 Фаол сериал: {p.get('series_title', serial)} ({serial})"
+    except (OSError, ValueError):
+        return f"📺 Фаол сериал: {serial} (режа ҳали тузилмаган)"
+
+
 def plan_text(serial: str) -> str:
     p = json.loads((ROOT / serial / "plan.json").read_text(encoding="utf-8"))
     lines = [f"🎬 {p.get('series_title', '')}",
@@ -4450,7 +4459,7 @@ class Bot:
             self.say(out.strip() or "Маълумот йўқ")
         elif cmd == "/use" and arg:
             self.active = arg
-            self.say(f"Фаол сериал: {arg}")
+            self.say(active_line(arg))
         elif cmd == "/mavzu":
             name, _, topic = arg.partition(" ")
             if not name or not topic.strip():
@@ -4617,7 +4626,7 @@ def main() -> int:
     if not token or not chat:
         raise SystemExit("TELEGRAM_BOT_TOKEN ва TELEGRAM_CHAT_ID .env да бўлиши керак")
     bot = Bot(token, chat, args.serial)
-    bot.say(f"🤖 Бот ишга тушди. Фаол сериал: {args.serial}. Буйруқлар: /help")
+    bot.say(f"🤖 Бот ишга тушди.\n{active_line(args.serial)}\nБуйруқлар: /help")
     bot.show_menu()
 
     while True:
