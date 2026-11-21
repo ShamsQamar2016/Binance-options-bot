@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `72a9fc8` (2026-11-21). Файллар: 21 та, жами 4276 қатор.
+Код версияси: коммит `18883d0` (2026-11-21). Файллар: 21 та, жами 4302 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 427 | 72a9fc8 (2026-11-21) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 453 | 18883d0 (2026-11-21) |
 
 ---
 
@@ -4251,6 +4251,30 @@ def fix_shot(serial: str, episode: int, shot_no: int, instruction: str) -> str:
     return f"{shot_no}-кадр янгиланди [{fix.shot_type}]. Захира: script.json.bak. Эндиликда: /redo {episode} {shot_no}"
 
 
+def balance_text() -> str:
+    """Ҳар сервис қолдиғи. Тасдиқланган эндпоинт фақат ElevenLabs'да; қолганлари — ҳавола."""
+    lines = []
+    key = os.environ.get("ELEVENLABS_API_KEY")
+    if not key:
+        lines.append("ElevenLabs: калит .env да йўқ")
+    else:
+        try:
+            r = requests.get("https://api.elevenlabs.io/v1/user/subscription",
+                             headers={"xi-api-key": key}, timeout=20)
+            if r.status_code == 200:
+                d = r.json()
+                used, limit = d.get("character_count", 0), d.get("character_limit", 0)
+                lines.append(f"ElevenLabs: {limit - used:,} қолди (ишлатилган {used:,} / {limit:,}), "
+                             f"тариф: {d.get('tier', '?')}")
+            else:
+                lines.append(f"ElevenLabs: ўқиб бўлмади (HTTP {r.status_code})")
+        except requests.RequestException as exc:
+            lines.append(f"ElevenLabs: уланиш хатоси ({exc.__class__.__name__})")
+    lines += ["fal.ai (видео, расм): https://fal.ai/dashboard/billing да кўринг",
+              "Anthropic (Claude): https://console.anthropic.com → Plans & Billing да кўринг"]
+    return "\n".join(lines)
+
+
 class Bot:
     def __init__(self, token: str, chat: str, serial: str):
         self.token = token
@@ -4298,6 +4322,8 @@ class Bot:
                      "/fix N КАДР ИЗОҲ — кадр тавсифини ўзгартириш\n"
                      "/redo N 5,12 — ёқмаган кадрларни қайта ясаш\n"
                      "/produce [N] — видеога йиғиш\n/publish — каналга чиқариш\n/ha — тасдиқ")
+        elif cmd == "/balans":
+            self.say(balance_text())
         elif cmd == "/status":
             _, out = run_serial(["status", "--serial", self.active])
             self.say(out.strip() or "Маълумот йўқ")
@@ -4374,7 +4400,7 @@ class Bot:
                     ["/publish", "/ha"]]
         commands = [("status", "Қисмлар ҳолати"), ("plan_show", "Режани кўриш"),
                     ("plan", "Китоб файлидан режа тузиш"), ("mavzu", "Мавзу асосида режа тузиш"),
-                    ("use", "Фаол сериални танлаш"),
+                    ("use", "Фаол сериални танлаш"), ("balans", "Сервислар қолдиғи"),
                     ("storyboard", "Раскадровка (расм)"), ("produce", "Видеога йиғиш"),
                     ("fix", "Кадр тавсифини тузатиш"), ("redo", "Кадрларни қайта ясаш"),
                     ("publish", "Каналга чиқариш"), ("ha", "Тасдиқ"), ("help", "Рўйхат")]
