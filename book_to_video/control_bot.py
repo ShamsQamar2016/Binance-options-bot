@@ -375,8 +375,12 @@ class Bot:
         sheet = ROOT / self.active / f"episode_{n:02d}" / "storyboard.jpg"
         try:
             tg.send_photo(sheet, caption=f"🎞 {n}-қисм раскадровкаси", chat_id=self.chat)
-        except Exception as exc:
-            self.say(f"Расмни юбориш мумкин эмас: {exc}")
+        except Exception as photo_exc:
+            # Telegram фото сифатида рад этса (катта варақ), файл сифатида юборамиз — расм барибир кўринади
+            try:
+                tg.send_document(sheet, caption=f"🎞 {n}-қисм раскадровкаси (файл сифатида)", chat_id=self.chat)
+            except Exception as exc:
+                self.say(f"Расмни юбориш мумкин эмас: {exc} (фото: {photo_exc})")
         self.say(script_text(self.active, n))
         self.say(f"Ёқмаган кадрлар: /redo {n} 5,12\nМаъқул бўлса: /produce {n}")
 
