@@ -138,6 +138,14 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
     return proc.returncode, out[-6000:]
 
 
+def short_title(serial: str) -> str:
+    """Хабарларда кўрсатиш учун сериал номи: «Нефертити» (режа йўқ бўлса — папка номи)."""
+    try:
+        return json.loads((ROOT / serial / "plan.json").read_text(encoding="utf-8")).get("series_title", serial)
+    except (OSError, ValueError):
+        return serial
+
+
 def active_line(serial: str) -> str:
     """«Фаол сериал: Нефертити (nefertiti)» — режа номи бўлмаса, папка номи."""
     try:
@@ -383,7 +391,8 @@ class Bot:
                     for f in clips.glob(pattern):
                         f.unlink()
                         removed += 1
-            self.say(f"Ўчирилди: {removed} файл ({', '.join(map(str, nums))}-кадрлар). Раскадровка қайта ясалади.")
+            self.say(f"📺 {short_title(self.active)} — {n}-қисм\n"
+                     f"Ўчирилди: {removed} файл ({', '.join(map(str, nums))}-кадрлар). Раскадровка қайта ясалади.")
             self.show_storyboard(n)
         elif cmd == "/produce":
             n = int(arg) if arg.isdigit() else 1
@@ -424,16 +433,17 @@ class Bot:
 
     def show_storyboard(self, n: int) -> None:
         code, out = run_serial(["storyboard", "--serial", self.active, "--episode", str(n), "--no-telegram"],
-                               say=self.say, label=f"{n}-қисм раскадровкаси")
+                               say=self.say, label=f"{short_title(self.active)} — {n}-қисм раскадровкаси")
         if code != 0:
             return self.say(f"❌ Раскадровка тугамади: {explain(out)}")
         sheet = ROOT / self.active / f"episode_{n:02d}" / "storyboard.jpg"
         try:
-            tg.send_photo(sheet, caption=f"🎞 {n}-қисм раскадровкаси", chat_id=self.chat)
+            tg.send_photo(sheet, caption=f"🎞 {short_title(self.active)} — {n}-қисм раскадровкаси", chat_id=self.chat)
         except Exception as photo_exc:
             # Telegram фото сифатида рад этса (катта варақ), файл сифатида юборамиз — расм барибир кўринади
             try:
-                tg.send_document(sheet, caption=f"🎞 {n}-қисм раскадровкаси (файл сифатида)", chat_id=self.chat)
+                tg.send_document(sheet, caption=f"🎞 {short_title(self.active)} — {n}-қисм раскадровкаси (файл сифатида)",
+                                 chat_id=self.chat)
             except Exception as exc:
                 self.say(f"Расмни юбориш мумкин эмас: {exc} (фото: {photo_exc})")
         self.say(script_text(self.active, n))
