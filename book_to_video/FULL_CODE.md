@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `dece739` (2026-11-21). Файллар: 22 та, жами 4397 қатор.
+Код версияси: коммит `44633ea` (2026-11-21). Файллар: 22 та, жами 4401 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 472 | dece739 (2026-11-21) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 476 | 44633ea (2026-11-21) |
 | 22 | `ledger.py` | Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да | 69 | dece739 (2026-11-21) |
 
 ---
@@ -4449,8 +4449,12 @@ class Bot:
         sheet = ROOT / self.active / f"episode_{n:02d}" / "storyboard.jpg"
         try:
             tg.send_photo(sheet, caption=f"🎞 {n}-қисм раскадровкаси", chat_id=self.chat)
-        except Exception as exc:
-            self.say(f"Расмни юбориш мумкин эмас: {exc}")
+        except Exception as photo_exc:
+            # Telegram фото сифатида рад этса (катта варақ), файл сифатида юборамиз — расм барибир кўринади
+            try:
+                tg.send_document(sheet, caption=f"🎞 {n}-қисм раскадровкаси (файл сифатида)", chat_id=self.chat)
+            except Exception as exc:
+                self.say(f"Расмни юбориш мумкин эмас: {exc} (фото: {photo_exc})")
         self.say(script_text(self.active, n))
         self.say(f"Ёқмаган кадрлар: /redo {n} 5,12\nМаъқул бўлса: /produce {n}")
 
