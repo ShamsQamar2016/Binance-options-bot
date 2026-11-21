@@ -114,7 +114,9 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
     for c in plan.characters:  # кадрда кўринмайдиган персонаж тилга олинса
         names.setdefault(c.id, f"{_label(c)}, a {_person(c)}")
     lines = [
-        "Photorealistic vertical 9:16 film still from a live-action movie shot with real actors.",
+        "Photorealistic vertical 9:16 PORTRAIT film still (tall, upright frame, the ground at the bottom and "
+        "people standing upright relative to the ground; NOT rotated, NOT sideways, NOT landscape) from a "
+        "live-action movie shot with real actors.",
         f"Shot: {SHOT_WORDS.get(shot.shot_type, shot.shot_type)}. {_sub_ids(shot.image_prompt, names)}",
     ]
     if cast:
