@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `fd494be` (2026-11-21). Файллар: 23 та, жами 4583 қатор.
+Код версияси: коммит `e78411e` (2026-11-21). Файллар: 23 та, жами 4593 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
 | 21 | `check_balance.py` | Текшириш: fal.ai ва Anthropic қолдиғини API орқали ўқиш мумкинми? | 63 | fd494be (2026-11-21) |
-| 22 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 546 | 49ae7fc (2026-11-21) |
+| 22 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 556 | e78411e (2026-11-21) |
 | 23 | `ledger.py` | Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да | 69 | dece739 (2026-11-21) |
 
 ---
@@ -4525,6 +4525,16 @@ class Bot:
             self.stop_job()
         elif cmd == "/balans":
             self.say(balance_text())
+            # fal.ai ва Anthropic қолдиғини сайтда кўриш учун саҳифаларни очамиз (сиз компьютерда бўлсангиз)
+            import webbrowser
+            for url in ("https://fal.ai/dashboard/billing",
+                        "https://console.anthropic.com/settings/billing"):
+                try:
+                    webbrowser.open_new_tab(url)
+                except Exception:
+                    logging.warning("браузер очилмади: %s", url)
+            self.say("Очиладиган саҳифаларда қолдиқни кўриб, `/setbalans fal СУММА` ва "
+                     "`/setbalans anthropic СУММА` ни ёзинг.")
         elif cmd == "/setbalans":
             parts = arg.split()
             if len(parts) != 2 or parts[0] not in ("fal", "anthropic"):
