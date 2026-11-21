@@ -329,16 +329,9 @@ class Bot:
             self.stop_job()
         elif cmd == "/balans":
             self.say(balance_text())
-            # fal.ai ва Anthropic қолдиғини сайтда кўриш учун саҳифаларни очамиз (сиз компьютерда бўлсангиз)
-            import webbrowser
-            for url in ("https://fal.ai/dashboard/billing",
-                        "https://console.anthropic.com/settings/billing"):
-                try:
-                    webbrowser.open_new_tab(url)
-                except Exception:
-                    logging.warning("браузер очилмади: %s", url)
-            self.say("Очиладиган саҳифаларда қолдиқни кўриб, `/setbalans fal СУММА` ва "
-                     "`/setbalans anthropic СУММА` ни ёзинг.")
+            # Тугмалар: босилганда сайт телефонда очилади (компьютер шарт эмас)
+            self.send_billing_buttons()
+            self.say("Қолдиқни кўриб, `/setbalans fal СУММА` ва `/setbalans anthropic СУММА` ни ёзинг.")
         elif cmd == "/setbalans":
             parts = arg.split()
             if len(parts) != 2 or parts[0] not in ("fal", "anthropic"):
@@ -415,6 +408,19 @@ class Bot:
             self.confirm()
         else:
             self.say("Номаълум буйруқ. /help")
+
+    def send_billing_buttons(self) -> None:
+        """Биллинг саҳифаларига тугмалар (inline URL): босилганда телефонда очилади."""
+        keyboard = {"inline_keyboard": [[
+            {"text": "fal.ai биллинг", "url": "https://fal.ai/dashboard/billing"},
+            {"text": "Anthropic биллинг", "url": "https://console.anthropic.com/settings/billing"},
+        ]]}
+        try:
+            requests.post(f"https://api.telegram.org/bot{self.token}/sendMessage",
+                          json={"chat_id": self.chat, "text": "Сайтда қолдиқни кўринг:",
+                                "reply_markup": keyboard}, timeout=20)
+        except requests.RequestException as exc:
+            logging.warning("тугма юбориш хатоси: %s", exc)
 
     def show_menu(self) -> None:
         """Чат остида тугмалар ва «/» менюси. Тугмалар буйруқни ўзи юборади."""
