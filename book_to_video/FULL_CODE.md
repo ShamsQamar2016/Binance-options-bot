@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `44633ea` (2026-11-21). Файллар: 22 та, жами 4401 қатор.
+Код версияси: коммит `4d33b97` (2026-11-21). Файллар: 22 та, жами 4403 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -15,7 +15,7 @@
 | 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | e5d276a (2026-11-10) |
 | 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | e5d276a (2026-11-10) |
 | 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | e5d276a (2026-11-10) |
-| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 247 | 636b67c (2026-11-12) |
+| 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 249 | 4d33b97 (2026-11-21) |
 | 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 433 | dece739 (2026-11-21) |
 | 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | e5d276a (2026-11-10) |
 | 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | e5d276a (2026-11-10) |
@@ -1798,7 +1798,9 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
     for c in plan.characters:  # кадрда кўринмайдиган персонаж тилга олинса
         names.setdefault(c.id, f"{_label(c)}, a {_person(c)}")
     lines = [
-        "Photorealistic vertical 9:16 film still from a live-action movie shot with real actors.",
+        "Photorealistic vertical 9:16 PORTRAIT film still (tall, upright frame, the ground at the bottom and "
+        "people standing upright relative to the ground; NOT rotated, NOT sideways, NOT landscape) from a "
+        "live-action movie shot with real actors.",
         f"Shot: {SHOT_WORDS.get(shot.shot_type, shot.shot_type)}. {_sub_ids(shot.image_prompt, names)}",
     ]
     if cast:
