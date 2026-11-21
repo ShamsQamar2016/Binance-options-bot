@@ -23,7 +23,7 @@ import fal_api
 from fileutil import PROBE_TIMEOUT, temp_name
 from pydantic import BaseModel, Field
 
-from series_planner import Character, Location, SeriesPlan, Shot, pick_best_image
+from series_planner import Character, Location, SeriesPlan, Shot, _image_block, pick_best_image
 from typing import Literal
 
 logger = logging.getLogger(__name__)
