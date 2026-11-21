@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `d14cca9` (2026-11-21). Файллар: 23 та, жами 4582 қатор.
+Код версияси: коммит `fd494be` (2026-11-21). Файллар: 23 та, жами 4583 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -26,7 +26,7 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `check_balance.py` | Текшириш: fal.ai ва Anthropic қолдиғини API орқали ўқиш мумкинми? | 62 | d14cca9 (2026-11-21) |
+| 21 | `check_balance.py` | Текшириш: fal.ai ва Anthropic қолдиғини API орқали ўқиш мумкинми? | 63 | fd494be (2026-11-21) |
 | 22 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 546 | 49ae7fc (2026-11-21) |
 | 23 | `ledger.py` | Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да | 69 | dece739 (2026-11-21) |
 
@@ -4140,10 +4140,9 @@ import requests
 from dotenv import load_dotenv
 
 FAL_CANDIDATES = [
-    "https://rest.alpha.fal.ai/billing",
+    "https://api.fal.ai/v1/account/billing",   # 403 берган эндпоинт: калит ҳуқуқи билан шу ерда ишлаши керак
+    "https://api.fal.ai/v1/account/balance",
     "https://api.fal.ai/v1/billing",
-    "https://api.fal.ai/v1/account/billing",
-    "https://rest.fal.ai/billing",
 ]
 ANTHROPIC_CANDIDATES = [
     "https://api.anthropic.com/v1/organizations/cost_report?starting_at=2026-11-01T00:00:00Z",
@@ -4165,12 +4164,14 @@ def probe(name: str, url: str, headers: dict) -> None:
 
 def main() -> None:
     load_dotenv()
-    fal_key = os.environ.get("FAL_KEY")
+    fal_key = os.environ.get("FAL_BILLING_KEY") or os.environ.get("FAL_KEY")
+    if os.environ.get("FAL_BILLING_KEY"):
+        print("[fal] FAL_BILLING_KEY ишлатилмоқда")
     if fal_key:
         for url in FAL_CANDIDATES:
             probe("fal", url, {"Authorization": f"Key {fal_key}"})
     else:
-        print("[fal] FAL_KEY .env да йўқ")
+        print("[fal] FAL_BILLING_KEY ёки FAL_KEY .env да йўқ")
 
     anth_key = os.environ.get("ANTHROPIC_API_KEY")
     if anth_key:
