@@ -21,6 +21,8 @@ from pathlib import Path
 
 import fal_api
 from fileutil import PROBE_TIMEOUT, temp_name
+from pydantic import BaseModel, Field
+
 from series_planner import Character, Location, SeriesPlan, Shot, pick_best_image
 
 logger = logging.getLogger(__name__)
@@ -136,7 +138,38 @@ def keyframe_prompt(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]]) 
     return "\n".join(lines)
 
 
-def make_keyframe(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]], out: Path) -> Path:
+class _Orientation(BaseModel):
+    upright: bool = Field(description="true, если люди стоят вертикально относительно земли, кадр не повёрнут")
+
+
+def _is_upright(path: Path) -> bool:
+    """Claude кадрни кўриб, ётиқ (90° ағдарилган) эмаслигини текширади. Хато бўлса — рўйхатга киритамиз."""
+    from claude_client import structured
+    content = [
+        {"type": "text", "text": "Этот кадр фильма: люди стоят вертикально относительно земли и изображение "
+                                 "не повёрнуто на 90 градусов? Ответь upright=false, если кадр ляжет набок."},
+        _image_block(_thumb(path)),
+    ]
+    try:
+        return structured("Ты — скрипт-супервайзер. Проверяешь ориентацию кадра.", content, _Orientation,
+                          effort="low", max_tokens=1000).upright
+    except Exception as exc:
+        logger.warning("ориентация текширилмади (%s) — кадр қабул қилинади", exc)
+        return True
+
+
+def make_keyframe(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]], out: Path, attempts: int = 3) -> Path:
+    """Калит расм. Ётиқ чиққан бўлса, янгидан ясайди (attempts гача)."""
+    for attempt in range(1, attempts + 1):
+        _make_keyframe_once(plan, shot, refs, out)
+        if _is_upright(out):
+            return out
+        print(f"       ↻ кадр {shot.number}: ётиқ чиқди, қайта ясалмоқда ({attempt}/{attempts})")
+        out.unlink(missing_ok=True)
+    return out
+
+
+def _make_keyframe_once(plan: SeriesPlan, shot: Shot, refs: list[tuple[str, Path]], out: Path) -> Path:
     """Калит расм: эталонлар билан бир неча вариант ясайди, Claude энг мосини танлайди."""
     takes = max(1, int(os.environ.get("KEYFRAME_TAKES", "2")))
     prompt = keyframe_prompt(plan, shot, refs)
