@@ -329,6 +329,16 @@ class Bot:
             self.stop_job()
         elif cmd == "/balans":
             self.say(balance_text())
+            # fal.ai ва Anthropic қолдиғини сайтда кўриш учун саҳифаларни очамиз (сиз компьютерда бўлсангиз)
+            import webbrowser
+            for url in ("https://fal.ai/dashboard/billing",
+                        "https://console.anthropic.com/settings/billing"):
+                try:
+                    webbrowser.open_new_tab(url)
+                except Exception:
+                    logging.warning("браузер очилмади: %s", url)
+            self.say("Очиладиган саҳифаларда қолдиқни кўриб, `/setbalans fal СУММА` ва "
+                     "`/setbalans anthropic СУММА` ни ёзинг.")
         elif cmd == "/setbalans":
             parts = arg.split()
             if len(parts) != 2 or parts[0] not in ("fal", "anthropic"):
