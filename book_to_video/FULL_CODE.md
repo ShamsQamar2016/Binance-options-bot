@@ -2,7 +2,7 @@
 
 > Бу файл `make_full_code.py` орқали автоматик ясалади — уни қўлда таҳрирламанг.
 
-Код версияси: коммит `18883d0` (2026-11-21). Файллар: 21 та, жами 4302 қатор.
+Код версияси: коммит `dece739` (2026-11-21). Файллар: 22 та, жами 4397 қатор.
 
 | № | Файл | Вазифаси | Қатор | Охирги ўзгариш |
 |---|---|---|---|---|
@@ -11,12 +11,12 @@
 | 3 | `.env.example` | Калитлар ва созламалар намунаси | 69 | e5d276a (2026-11-10) |
 | 4 | `serial.py` | Китобдан кундалик вертикал AI-сериал (рус дубляжи): ҳар куни бир қисм Telegram каналга | 544 | d245757 (2026-11-13) |
 | 5 | `series_planner.py` | Claude: китобни вертикал сериалга айлантириш (ҳар қандай мамлакат, рус дубляжи) | 434 | e5d276a (2026-11-10) |
-| 6 | `claude_client.py` | Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой) | 61 | e5d276a (2026-11-10) |
+| 6 | `claude_client.py` | Claude API билан ишлаш учун умумий ёрдамчилар (сериал ва трейлер режимлари учун битта жой) | 65 | dece739 (2026-11-21) |
 | 7 | `fileutil.py` | Файлларни хавфсиз ёзиш ва ўқиш | 54 | e5d276a (2026-11-10) |
 | 8 | `book_sources.py` | Китобни олиш: локал файл, URL ҳавола ёки Telegram ботга юборилган файл | 91 | e5d276a (2026-11-10) |
 | 9 | `book_reader.py` | Китоб файлини ўқиш: .txt, .md, .pdf, .docx | 54 | e5d276a (2026-11-10) |
 | 10 | `visuals.py` | Тасвир: персонаж ва жой эталонлари → калит расм → расмдан видео → лаб синхрони | 247 | 636b67c (2026-11-12) |
-| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 430 | 22fd880 (2026-11-12) |
+| 11 | `fal_api.py` | fal.ai орқали моделларни ишлатиш: файл юклаш, навбатга қўйиш, натижани юклаб олиш | 433 | dece739 (2026-11-21) |
 | 12 | `dubbing.py` | Русча дубляж (ElevenLabs): ҳар персонажга алоҳида, махсус яратилган овоз | 162 | e5d276a (2026-11-10) |
 | 13 | `sound.py` | Товуш дизайни (ElevenLabs): жой муҳити (ambience), кадр эффектлари (SFX) ва қисм мусиқаси | 62 | e5d276a (2026-11-10) |
 | 14 | `episode_builder.py` | Битта қисмни йиғиш: вертикал 1080×1920, YouTube Shorts ва Instagram Reels учун | 571 | e5d276a (2026-11-10) |
@@ -26,7 +26,8 @@
 | 18 | `make_full_code.py` | FULL_CODE.md ни ясайди: лойиҳанинг ҳамма файллари битта Markdown файлда (аудит учун) | 119 | e5d276a (2026-11-10) |
 | 19 | `main.py` | Китоб → Claude сценарий → видео клиплар → трейлер → Telegram | 114 | e5d276a (2026-11-10) |
 | 20 | `scenario.py` | Claude ёрдамида китобни таҳлил қилиш ва трейлер сценарийсини яратиш | 93 | e5d276a (2026-11-10) |
-| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 453 | 18883d0 (2026-11-21) |
+| 21 | `control_bot.py` | Telegram орқали бошқариладиган назоратчи бот | 472 | dece739 (2026-11-21) |
+| 22 | `ledger.py` | Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да | 69 | dece739 (2026-11-21) |
 
 ---
 
@@ -1390,6 +1391,8 @@ from __future__ import annotations
 
 import anthropic
 
+import ledger
+
 MODEL = "claude-opus-5-5"
 # Хавфсизлик фильтри сўровни рад этса, API уни автоматик бошқа моделда қайта ишлатади
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -1425,6 +1428,7 @@ def structured(system: str, content, output_type, effort: str = "high", max_toke
         messages=[{"role": "user", "content": content}],
     ) as stream:
         message = stream.get_final_message()
+    ledger.add_claude(message.usage)
     check(message, hint)
     return message.parsed_output
 
@@ -1440,6 +1444,7 @@ def text(prompt: str, effort: str = "medium", max_tokens: int = 32000) -> str:
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         message = stream.get_final_message()
+    ledger.add_claude(message.usage)
     check(message)
     return "".join(b.text for b in message.content if b.type == "text")
 `````
@@ -1960,6 +1965,7 @@ from pathlib import Path
 
 import requests
 
+import ledger
 from fileutil import read_json_cache, write_json_atomic
 
 logger = logging.getLogger(__name__)
@@ -2234,6 +2240,8 @@ def _start(endpoint: str, payload: dict, timeout_s: int) -> tuple[str, dict]:
 
     logger.info("fal.ai → %s %s", endpoint, json.dumps(_short(arguments), ensure_ascii=False)[:600])
     handle = _submit(client, endpoint, arguments)
+    kind, est = ledger.fal_estimate(endpoint)   # янги тўлов: тахминий сарфни ёзамиз (давом эттириш — йўқ)
+    ledger.add("fal", est, f"{kind}: {endpoint}")
     _journal(lambda j: j.__setitem__(key, {"endpoint": endpoint, "request_id": handle.request_id, "at": time.time()}))
     try:
         return key, _wait(client, endpoint, handle.request_id, key, timeout_s, started)
@@ -4270,8 +4278,16 @@ def balance_text() -> str:
                 lines.append(f"ElevenLabs: ўқиб бўлмади (HTTP {r.status_code})")
         except requests.RequestException as exc:
             lines.append(f"ElevenLabs: уланиш хатоси ({exc.__class__.__name__})")
-    lines += ["fal.ai (видео, расм): https://fal.ai/dashboard/billing да кўринг",
-              "Anthropic (Claude): https://console.anthropic.com → Plans & Billing да кўринг"]
+    import ledger
+    for service, title, link in (("fal", "fal.ai", "fal.ai/dashboard/billing"),
+                                 ("anthropic", "Anthropic", "console.anthropic.com → Plans & Billing")):
+        s = ledger.status(service)
+        if s["set"] is None:
+            lines.append(f"{title}: бугун ~${s['today']:.2f}, жами ~${s['total']:.2f} (тахминий). "
+                         f"Қолдиқни киритинг: /setbalans {service} СУММА ({link} дан)")
+        else:
+            lines.append(f"{title}: қолди ~${s['remaining']:.2f} (киритилган ${s['set']:.2f}, "
+                         f"ундан бери ~${s['spent_since_set']:.2f} сарфланган, тахминий). Бугун ~${s['today']:.2f}")
     return "\n".join(lines)
 
 
@@ -4324,6 +4340,16 @@ class Bot:
                      "/produce [N] — видеога йиғиш\n/publish — каналга чиқариш\n/ha — тасдиқ")
         elif cmd == "/balans":
             self.say(balance_text())
+        elif cmd == "/setbalans":
+            parts = arg.split()
+            if len(parts) != 2 or parts[0] not in ("fal", "anthropic"):
+                return self.say("Ёзинг: /setbalans fal 18.18 ёки /setbalans anthropic 19.22")
+            try:
+                import ledger
+                ledger.set_balance(parts[0], float(parts[1].replace(",", ".")))
+                self.say("Қабул қилинди.\n" + balance_text())
+            except ValueError:
+                self.say("Сумма рақам бўлиши керак, мас. 18.18")
         elif cmd == "/status":
             _, out = run_serial(["status", "--serial", self.active])
             self.say(out.strip() or "Маълумот йўқ")
@@ -4401,6 +4427,7 @@ class Bot:
         commands = [("status", "Қисмлар ҳолати"), ("plan_show", "Режани кўриш"),
                     ("plan", "Китоб файлидан режа тузиш"), ("mavzu", "Мавзу асосида режа тузиш"),
                     ("use", "Фаол сериални танлаш"), ("balans", "Сервислар қолдиғи"),
+                    ("setbalans", "Қолдиқни киритиш"),
                     ("storyboard", "Раскадровка (расм)"), ("produce", "Видеога йиғиш"),
                     ("fix", "Кадр тавсифини тузатиш"), ("redo", "Кадрларни қайта ясаш"),
                     ("publish", "Каналга чиқариш"), ("ha", "Тасдиқ"), ("help", "Рўйхат")]
@@ -4517,4 +4544,82 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+`````
+
+---
+
+## 22. `ledger.py`
+
+Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да
+
+`````python
+"""Тахминий сарф журнали: fal.ai ва Anthropic чақирувлари. Ёзувлар output/spend.json да.
+
+fal.ai нархлари тахминий (ҳар модел учун аниқ нарх эмас), шунинг учун қолдиқ ҳам тахминий бўлади.
+Anthropic сарфи — ҳақиқий токенлар ва модел нархи асосида.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime
+from pathlib import Path
+
+PATH = Path("output/spend.json")
+FAL_ESTIMATE = {"video": 1.2, "lipsync": 0.15, "image": 0.15}   # $ бир чақириққа, тахминий
+CLAUDE_PER_MTOK = {"in": 4.0, "out": 20.0}                       # claude-opus-5-5: $ 1 млн токенга
+
+
+def _load() -> dict:
+    if PATH.exists():
+        return json.loads(PATH.read_text(encoding="utf-8"))
+    return {"entries": [], "balances": {}}
+
+
+def _save(data: dict) -> None:
+    PATH.parent.mkdir(parents=True, exist_ok=True)
+    PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def add(service: str, usd: float, note: str = "") -> None:
+    data = _load()
+    data["entries"].append({"t": time.time(), "service": service, "usd": round(usd, 4), "note": note})
+    _save(data)
+
+
+def fal_estimate(endpoint: str) -> tuple[str, float]:
+    e = endpoint.lower()
+    kind = "lipsync" if "lipsync" in e else ("video" if ("veo" in e or "kling" in e or "video" in e) else "image")
+    return kind, FAL_ESTIMATE[kind]
+
+
+def add_claude(usage) -> None:
+    tokens_in = getattr(usage, "input_tokens", 0) or 0
+    tokens_out = getattr(usage, "output_tokens", 0) or 0
+    cost = (tokens_in * CLAUDE_PER_MTOK["in"] + tokens_out * CLAUDE_PER_MTOK["out"]) / 1_000_000
+    add("anthropic", cost, f"{tokens_in} кириш, {tokens_out} чиқиш токен")
+
+
+def set_balance(service: str, usd: float) -> None:
+    data = _load()
+    data["balances"][service] = {"t": time.time(), "usd": usd}
+    _save(data)
+
+
+def status(service: str) -> dict:
+    data = _load()
+    bal = data["balances"].get(service)
+    since = bal["t"] if bal else 0
+    spent_since = sum(e["usd"] for e in data["entries"] if e["service"] == service and e["t"] > since)
+    midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    today = sum(e["usd"] for e in data["entries"] if e["service"] == service and e["t"] >= midnight)
+    total = sum(e["usd"] for e in data["entries"] if e["service"] == service)
+    return {
+        "set": bal["usd"] if bal else None,
+        "spent_since_set": spent_since,
+        "remaining": (bal["usd"] - spent_since) if bal else None,
+        "today": today,
+        "total": total,
+    }
 `````
