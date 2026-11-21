@@ -85,6 +85,7 @@ def is_transient(output: str) -> bool:
 
 
 STALL_SECONDS = int(os.environ.get("BOT_STALL_MINUTES", "15")) * 60
+CURRENT: dict = {"proc": None, "tick": None}   # ҳозирги serial.py жараёни ва /stop текшируви
 
 
 def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = "") -> tuple[int, str]:
@@ -104,8 +105,9 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
             last[0] = time.time()
 
     threading.Thread(target=reader, daemon=True).start()
+    CURRENT["proc"] = proc
     if say and label:
-        say(f"▶️ {label} жараёнда. Тугагач ёки тўхтаганда хабар бераман.")
+        say(f"▶️ {label} жараёнда. Тугагач ёки тўхтаганда хабар бераман. Тўхтатиш: /stop")
     start = time.time()
     alerted = False
     while True:
@@ -113,6 +115,11 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
             proc.wait(timeout=30)
             break
         except subprocess.TimeoutExpired:
+            if CURRENT.get("tick"):
+                try:
+                    CURRENT["tick"]()   # /stop ни текширади; бошқа хабарларни сақлаб туради
+                except Exception:
+                    logging.exception("tick хатоси")
             if time.time() - start > timeout:
                 proc.kill()
                 raise
@@ -123,6 +130,7 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
                     "Тўхтаб қолган бўлиши мумкин; CMD ойнасини текширинг.")
             elif quiet <= STALL_SECONDS:
                 alerted = False
+    CURRENT["proc"] = None
     out = "".join(lines)
     logging.info("serial.py %s → код %s", " ".join(args), proc.returncode)
     return proc.returncode, out[-6000:]
@@ -226,6 +234,31 @@ class Bot:
         self.waiting_book: tuple | None = None   # (сериал номи, тугаш вақти)
         self.awaiting: str | None = None         # тугмадан кейин қайси буйрук аргумент кутяпти
         self.offset: int | None = None
+        self.backlog: list[dict] = []            # иш вақтида келган, ҳали бажарилмаган хабарлар
+        CURRENT["tick"] = self.poll_during_job
+
+    def poll_during_job(self) -> None:
+        """Иш давом этаётганда: фақат /stop ни бажаради, бошқа хабарларни навбатда сақлайди."""
+        r = requests.get(f"https://api.telegram.org/bot{self.token}/getUpdates",
+                         params={"timeout": 0, "offset": self.offset, "allowed_updates": '["message"]'},
+                         timeout=20)
+        for upd in r.json().get("result", []) if r.json().get("ok") else []:
+            self.offset = upd["update_id"] + 1
+            msg = upd.get("message") or {}
+            if str(msg.get("chat", {}).get("id")) != self.chat:
+                continue
+            if (msg.get("text") or "").strip().lower().startswith("/stop"):
+                self.stop_job()
+            else:
+                self.backlog.append(msg)
+
+    def stop_job(self) -> None:
+        proc = CURRENT.get("proc")
+        if proc and proc.poll() is None:
+            proc.kill()
+            self.say("⏹ Жараён тўхтатилди. Бот ишлаяпти, янги буйруқ беришингиз мумкин.")
+        else:
+            self.say("Ҳозир тўхтатиладиган жараён йўқ.")
 
     # ---- Telegram ----
     def say(self, text: str) -> None:
@@ -264,6 +297,8 @@ class Bot:
                      "/fix N КАДР ИЗОҲ — кадр тавсифини ўзгартириш\n"
                      "/redo N 5,12 — ёқмаган кадрларни қайта ясаш\n"
                      "/produce [N] — видеога йиғиш\n/publish — каналга чиқариш\n/ha — тасдиқ")
+        elif cmd == "/stop":
+            self.stop_job()
         elif cmd == "/balans":
             self.say(balance_text())
         elif cmd == "/setbalans":
@@ -453,13 +488,18 @@ def main() -> int:
 
     while True:
         try:
-            updates = bot.updates()
+            if bot.backlog:  # иш вақтида келган хабарлар аввал бажарилади
+                updates = [{"update_id": None, "message": m} for m in bot.backlog]
+                bot.backlog = []
+            else:
+                updates = bot.updates()
         except requests.RequestException as exc:
             logging.warning("Telegram уланиш хатоси: %s", exc)
             time.sleep(10)
             continue
         for upd in updates:
-            bot.offset = upd["update_id"] + 1
+            if upd.get("update_id") is not None:
+                bot.offset = upd["update_id"] + 1
             msg = upd.get("message") or {}
             if str(msg.get("chat", {}).get("id")) != bot.chat:
                 continue  # бошқаларнинг буйруқлари қабул қилинмайди
