@@ -133,6 +133,8 @@ def run_serial(args: list[str], timeout: int = 4 * 3600, say=None, label: str = 
     CURRENT["proc"] = None
     out = "".join(lines)
     logging.info("serial.py %s → код %s", " ".join(args), proc.returncode)
+    if proc.returncode != 0:
+        logging.error("serial.py хато матни (охирги қисм):\n%s", out[-3000:])   # журналда сабаб қолсин
     return proc.returncode, out[-6000:]
 
 
@@ -263,7 +265,16 @@ class Bot:
     # ---- Telegram ----
     def say(self, text: str) -> None:
         for start in range(0, len(text), 3900):
-            tg.send_text(text[start:start + 3900], chat_id=self.chat)
+            chunk = text[start:start + 3900]
+            for attempt in range(1, 4):   # Telegram секин жавоб берса, 3 марта қайта юборамиз
+                try:
+                    tg.send_text(chunk, chat_id=self.chat)
+                    break
+                except requests.RequestException as exc:
+                    logging.warning("Telegram юбориш хатоси (%d/3): %s", attempt, exc)
+                    if attempt == 3:
+                        return
+                    time.sleep(5 * attempt)
 
     def updates(self) -> list[dict]:
         params = {"timeout": POLL_TIMEOUT, "allowed_updates": '["message"]'}
