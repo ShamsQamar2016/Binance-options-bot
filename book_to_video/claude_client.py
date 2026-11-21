@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import anthropic
 
+import ledger
+
 MODEL = "claude-opus-5-5"
 # Хавфсизлик фильтри сўровни рад этса, API уни автоматик бошқа моделда қайта ишлатади
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -42,6 +44,7 @@ def structured(system: str, content, output_type, effort: str = "high", max_toke
         messages=[{"role": "user", "content": content}],
     ) as stream:
         message = stream.get_final_message()
+    ledger.add_claude(message.usage)
     check(message, hint)
     return message.parsed_output
 
@@ -57,5 +60,6 @@ def text(prompt: str, effort: str = "medium", max_tokens: int = 32000) -> str:
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         message = stream.get_final_message()
+    ledger.add_claude(message.usage)
     check(message)
     return "".join(b.text for b in message.content if b.type == "text")

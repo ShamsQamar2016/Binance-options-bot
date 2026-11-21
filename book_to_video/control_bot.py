@@ -204,8 +204,16 @@ def balance_text() -> str:
                 lines.append(f"ElevenLabs: ўқиб бўлмади (HTTP {r.status_code})")
         except requests.RequestException as exc:
             lines.append(f"ElevenLabs: уланиш хатоси ({exc.__class__.__name__})")
-    lines += ["fal.ai (видео, расм): https://fal.ai/dashboard/billing да кўринг",
-              "Anthropic (Claude): https://console.anthropic.com → Plans & Billing да кўринг"]
+    import ledger
+    for service, title, link in (("fal", "fal.ai", "fal.ai/dashboard/billing"),
+                                 ("anthropic", "Anthropic", "console.anthropic.com → Plans & Billing")):
+        s = ledger.status(service)
+        if s["set"] is None:
+            lines.append(f"{title}: бугун ~${s['today']:.2f}, жами ~${s['total']:.2f} (тахминий). "
+                         f"Қолдиқни киритинг: /setbalans {service} СУММА ({link} дан)")
+        else:
+            lines.append(f"{title}: қолди ~${s['remaining']:.2f} (киритилган ${s['set']:.2f}, "
+                         f"ундан бери ~${s['spent_since_set']:.2f} сарфланган, тахминий). Бугун ~${s['today']:.2f}")
     return "\n".join(lines)
 
 
@@ -258,6 +266,16 @@ class Bot:
                      "/produce [N] — видеога йиғиш\n/publish — каналга чиқариш\n/ha — тасдиқ")
         elif cmd == "/balans":
             self.say(balance_text())
+        elif cmd == "/setbalans":
+            parts = arg.split()
+            if len(parts) != 2 or parts[0] not in ("fal", "anthropic"):
+                return self.say("Ёзинг: /setbalans fal 18.18 ёки /setbalans anthropic 19.22")
+            try:
+                import ledger
+                ledger.set_balance(parts[0], float(parts[1].replace(",", ".")))
+                self.say("Қабул қилинди.\n" + balance_text())
+            except ValueError:
+                self.say("Сумма рақам бўлиши керак, мас. 18.18")
         elif cmd == "/status":
             _, out = run_serial(["status", "--serial", self.active])
             self.say(out.strip() or "Маълумот йўқ")
@@ -335,6 +353,7 @@ class Bot:
         commands = [("status", "Қисмлар ҳолати"), ("plan_show", "Режани кўриш"),
                     ("plan", "Китоб файлидан режа тузиш"), ("mavzu", "Мавзу асосида режа тузиш"),
                     ("use", "Фаол сериални танлаш"), ("balans", "Сервислар қолдиғи"),
+                    ("setbalans", "Қолдиқни киритиш"),
                     ("storyboard", "Раскадровка (расм)"), ("produce", "Видеога йиғиш"),
                     ("fix", "Кадр тавсифини тузатиш"), ("redo", "Кадрларни қайта ясаш"),
                     ("publish", "Каналга чиқариш"), ("ha", "Тасдиқ"), ("help", "Рўйхат")]

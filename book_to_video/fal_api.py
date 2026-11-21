@@ -25,6 +25,7 @@ from pathlib import Path
 
 import requests
 
+import ledger
 from fileutil import read_json_cache, write_json_atomic
 
 logger = logging.getLogger(__name__)
@@ -299,6 +300,8 @@ def _start(endpoint: str, payload: dict, timeout_s: int) -> tuple[str, dict]:
 
     logger.info("fal.ai → %s %s", endpoint, json.dumps(_short(arguments), ensure_ascii=False)[:600])
     handle = _submit(client, endpoint, arguments)
+    kind, est = ledger.fal_estimate(endpoint)   # янги тўлов: тахминий сарфни ёзамиз (давом эттириш — йўқ)
+    ledger.add("fal", est, f"{kind}: {endpoint}")
     _journal(lambda j: j.__setitem__(key, {"endpoint": endpoint, "request_id": handle.request_id, "at": time.time()}))
     try:
         return key, _wait(client, endpoint, handle.request_id, key, timeout_s, started)
